@@ -115,8 +115,8 @@ extern "C" {
 
 	RAZF* razf_dopen(int data_fd, const char *mode);
 	RAZF *razf_open(const char *fn, const char *mode);
-	ssize_t razf_write(RAZF* rz, const void *data, size_t size);
-	ssize_t razf_read(RAZF* rz, void *data, size_t size);
+	ssize_t razf_write(RAZF* rz, const char *data, size_t size);
+	ssize_t razf_read(RAZF* rz, char *data, size_t size);
 	int64_t razf_seek(RAZF* rz, int64_t pos, int where);
 	void razf_close(RAZF* rz);
 
