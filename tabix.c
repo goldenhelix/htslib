@@ -193,7 +193,7 @@ int reheader_file(const char *fname, const char *header, int ftype, tbx_conf_t *
         }
 
         // Output the new header
-        FILE *hdr  = fopen(header,"r");
+        FILE *hdr  = fopen(header,"rb");
         if ( !hdr ) error("%s: %s", header,strerror(errno));
         int page_size = getpagesize();
         char *buf = valloc(page_size);

@@ -255,6 +255,12 @@ extern "C" {
 	// Load .csi or .bai BAM index file.
 	#define bam_index_load(fn) hts_idx_load((fn), HTS_FMT_BAI)
 
+        /** Build the index and return it with an error buffer and
+         * callbacks. Callback is only called every 1000 lines or so and
+         * if it returns false, we cancel out of the index.
+         */
+        typedef int (*BuildBaiProgressCallback)(uint64_t pos, void* cbData);
+        hts_idx_t *bam_index2(BGZF *fp, int min_shift, char* err_buf, BuildBaiProgressCallback cb, void* cbData);
 	int bam_index_build(const char *fn, int min_shift);
 
 	// Load BAM (.csi or .bai) or CRAM (.crai) index file.

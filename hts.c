@@ -8,7 +8,9 @@
 #include <sys/stat.h>
 #include "htslib/bgzf.h"
 #include "htslib/hts.h"
+#ifndef NO_CRAM
 #include "cram/cram.h"
+#endif
 #include "htslib/hfile.h"
 #include "version.h"
 
@@ -152,11 +154,13 @@ htsFile *hts_open(const char *fn, const char *mode)
 		fp->fp.bgzf = bgzf_hopen(hfile, mode);
 		if (fp->fp.bgzf == NULL) goto error;
 	}
+#ifndef NO_CRAM
 	else if (fp->is_cram) {
 		fp->fp.cram = cram_dopen(hfile, fn, mode);
 		if (fp->fp.cram == NULL) goto error;
 	}
-	else if (fp->is_kstream) {
+#endif
+        else if (fp->is_kstream) {
 	#if KS_BGZF
 		BGZF *gzfp = bgzf_hopen(hfile, mode);
 	#else
@@ -195,6 +199,7 @@ int hts_close(htsFile *fp)
 	if (fp->is_bin || (fp->is_write && fp->is_compressed==1)) {
 		ret = bgzf_close(fp->fp.bgzf);
 	} else if (fp->is_cram) {
+#ifndef NO_CRAM
 		if (!fp->is_write) {
 			switch (cram_eof(fp->fp.cram)) {
 			case 0:
@@ -208,6 +213,7 @@ int hts_close(htsFile *fp)
 			}
 		}
 		ret = cram_close(fp->fp.cram);
+#endif
 	} else if (fp->is_kstream) {
 	#if KS_BGZF
 		BGZF *gzfp = ((kstream_t*)fp->fp.voidp)->f;
@@ -282,17 +288,17 @@ char **hts_readlist(const char *string, int is_file, int *_n)
 {
     int m = 0, n = 0, dret;
     char **s = 0;
+    kstream_t *ks;
+    kstring_t str;
     if ( is_file )
     {
 #if KS_BGZF
         BGZF *fp = bgzf_open(string, "r");
 #else
-        gzFile fp = gzopen(string, "r");
+        gzFile fp = gzopen(string, "rb");
 #endif
         if ( !fp ) return NULL;
 
-        kstream_t *ks;
-        kstring_t str;
         str.s = 0; str.l = str.m = 0;
         ks = ks_init(fp);
         while (ks_getuntil(ks, KS_SEP_LINE, &str, &dret) >= 0) 
@@ -339,7 +345,7 @@ char **hts_readlines(const char *fn, int *_n)
 #if KS_BGZF
 	BGZF *fp = bgzf_open(fn, "r");
 #else
-	gzFile fp = gzopen(fn, "r");
+	gzFile fp = gzopen(fn, "rb");
 #endif
 	if ( fp ) { // read from file
 		kstream_t *ks;
@@ -384,16 +390,18 @@ char **hts_readlines(const char *fn, int *_n)
 int hts_file_type(const char *fname)
 {
     int len = strlen(fname);
+    int fd;
+    uint8_t magic[5];
+
     if ( !strcasecmp(".vcf.gz",fname+len-7) ) return FT_VCF_GZ;
     if ( !strcasecmp(".vcf",fname+len-4) ) return FT_VCF;
     if ( !strcasecmp(".bcf",fname+len-4) ) return FT_BCF_GZ;
     if ( !strcmp("-",fname) ) return FT_STDIN;
     // ... etc
 
-    int fd = open(fname, O_RDONLY);
+    fd = open(fname, O_RDONLY);
     if ( !fd ) return 0;
 
-    uint8_t magic[5];
     if ( read(fd,magic,2)!=2 ) { close(fd); return 0; }
     if ( !strncmp((char*)magic,"##",2) ) { close(fd); return FT_VCF; }
     if ( !strncmp((char*)magic,"BCF",3) ) { close(fd); return FT_BCF; }
@@ -709,7 +717,7 @@ static inline void swap_bins(bins_t *p)
 	}
 }
 
-static void hts_idx_save_core(const hts_idx_t *idx, void *fp, int fmt)
+void hts_idx_save_core(const hts_idx_t *idx, void *fp, int fmt)
 {
 	int32_t i, size, is_be;
 	int is_bgzf = (fmt != HTS_FMT_BAI);
@@ -801,7 +809,7 @@ void hts_idx_save(const hts_idx_t *idx, const char *fn, int fmt)
 		bgzf_close(fp);
 	} else if (fmt == HTS_FMT_BAI) {
 		FILE *fp;
-		fp = fopen(strcat(fnidx, ".bai"), "w");
+		fp = fopen(strcat(fnidx, ".bai"), "wb");
 		fwrite("BAI\1", 1, 4, fp);
 		hts_idx_save_core(idx, fp, HTS_FMT_BAI);
 		fclose(fp);
@@ -928,14 +936,15 @@ uint8_t *hts_idx_get_meta(hts_idx_t *idx, int *l_meta)
 
 const char **hts_idx_seqnames(const hts_idx_t *idx, int *n, hts_id2name_f getid, void *hdr)
 {
+    int tid = 0, i;
+    const char **names;
     if ( !idx->n )
     {
         *n = 0;
         return NULL;
     }
 
-    int tid = 0, i;
-    const char **names = (const char**) calloc(idx->n,sizeof(const char*));
+    names = (const char**) calloc(idx->n,sizeof(const char*));
     for (i=0; i<idx->n; i++)
     {
         bidx_t *bidx = idx->bidx[i];
@@ -1190,7 +1199,7 @@ static char *test_and_fetch(const char *fn)
 			if (hts_verbose >= 1) fprintf(stderr, "[E::%s] fail to open remote file '%s'\n", __func__, fn);
 			return 0;
 		}
-		if ((fp = fopen(p, "w")) == 0) {
+		if ((fp = fopen(p, "wb")) == 0) {
 			if (hts_verbose >= 1) fprintf(stderr, "[E::%s] fail to create file '%s' in the working directory\n", __func__, p);
 			hclose_abruptly(fp_remote);
 			return 0;
@@ -1235,13 +1244,13 @@ hts_idx_t *hts_idx_load(const char *fn, int fmt)
 {
 	char *fnidx;
 	hts_idx_t *idx;
+	struct stat stat_idx,stat_main;
 	fnidx = hts_idx_getfn(fn, ".csi");
 	if (fnidx) fmt = HTS_FMT_CSI;
 	else fnidx = hts_idx_getfn(fn, fmt == HTS_FMT_BAI? ".bai" : ".tbi");
 	if (fnidx == 0) return 0;
 
     // Check that the index file is up to date, the main file might have changed
-    struct stat stat_idx,stat_main;
     if ( !stat(fn, &stat_main) && !stat(fnidx, &stat_idx) )
     {
         if ( stat_idx.st_mtime < stat_main.st_mtime )

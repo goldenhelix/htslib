@@ -217,12 +217,12 @@ FILE *download_and_open(const char *fn)
     fn = p + 1;
 
     // First try to open a local copy
-    fp = fopen(fn, "r");
+    fp = fopen(fn, "rb");
     if (fp)
         return fp;
 
     // If failed, download from remote and open
-    fp_remote = knet_open(url, "rb");
+    fp_remote = knet_open(url, "r");
     if (fp_remote == 0) {
         fprintf(stderr, "[download_from_remote] fail to open remote file %s\n",url);
         return NULL;
@@ -239,7 +239,7 @@ FILE *download_and_open(const char *fn)
     fclose(fp);
     knet_close(fp_remote);
 
-    return fopen(fn, "r");
+    return fopen(fn, "rb");
 }
 #endif
 
@@ -279,7 +279,7 @@ faidx_t *fai_load(const char *fn)
 	fai = fai_read(fp);
 	fclose(fp);
 
-	fai->bgzf = bgzf_open(fn, "rb");
+	fai->bgzf = bgzf_open(fn, "r");
 	free(str);
 	if (fai->bgzf == 0) {
 		fprintf(stderr, "[fai_load] fail to open FASTA file.\n");
@@ -305,6 +305,7 @@ char *fai_fetch(const faidx_t *fai, const char *str, int *len)
 	faidx1_t val;
 	khash_t(s) *h;
 	int beg, end;
+        int ret;
 
 	beg = end = -1;
 	h = fai->hash;
@@ -357,7 +358,7 @@ char *fai_fetch(const faidx_t *fai, const char *str, int *len)
 	free(s);
 
 	// now retrieve the sequence
-	int ret = bgzf_useek(fai->bgzf, val.offset + beg / val.line_blen * val.line_len + beg % val.line_blen, SEEK_SET);
+	ret = bgzf_useek(fai->bgzf, val.offset + beg / val.line_blen * val.line_len + beg % val.line_blen, SEEK_SET);
     if ( ret<0 )
     {
         *len = -1;
@@ -384,6 +385,7 @@ char *faidx_fetch_seq(const faidx_t *fai, const char *c_name, int p_beg_i, int p
 	char c;
     khiter_t iter;
     faidx1_t val;
+    int ret;
 	char *seq=NULL;
 
     // Adjust position
@@ -402,7 +404,7 @@ char *faidx_fetch_seq(const faidx_t *fai, const char *c_name, int p_beg_i, int p
     else if(val.len <= p_end_i) p_end_i = val.len - 1;
 
     // Now retrieve the sequence 
-	int ret = bgzf_useek(fai->bgzf, val.offset + p_beg_i / val.line_blen * val.line_len + p_beg_i % val.line_blen, SEEK_SET);
+    ret = bgzf_useek(fai->bgzf, val.offset + p_beg_i / val.line_blen * val.line_len + p_beg_i % val.line_blen, SEEK_SET);
     if ( ret<0 )
     {
         *len = -1;

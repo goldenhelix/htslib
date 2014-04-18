@@ -62,7 +62,7 @@ typedef struct _gz_header_s _gz_header;
 #define RZ_COMPRESS_LEVEL 6
 #endif
 
-#define RZ_BIN_SIZE ((1LLU << 32) / RZ_BLOCK_SIZE)
+#define RZ_BIN_SIZE ((1ULL << 32) / RZ_BLOCK_SIZE)
 
 typedef struct {
 	uint32_t *cell_offsets; // i
@@ -97,7 +97,7 @@ typedef struct RandomAccessZFile  {
 	int64_t block_pos, block_off, next_block_pos;
 	/* block_pos: the start postiion of current block  in compressed file */
 	/* block_off: tell how many bytes have been read from current block */
-	void *inbuf, *outbuf;
+        char *inbuf, *outbuf;
 	int header_size;
 	gz_header *header;
 	/* header is used to transfer inflate_state->mode from HEAD to TYPE after call inflateReset */

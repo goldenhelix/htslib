@@ -69,15 +69,16 @@ typedef struct {
 
 extern int hts_verbose;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*! @abstract Table for converting a nucleotide character to the 4-bit encoding. */
 extern const unsigned char seq_nt16_table[256];
 
 /*! @abstract Table for converting a 4-bit encoded nucleotide to a letter. */
 extern const char seq_nt16_str[];
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /*!
   @abstract  Get the htslib version number
@@ -201,7 +202,9 @@ extern "C" {
 	void hts_idx_finish(hts_idx_t *idx, uint64_t final_offset);
 
 	void hts_idx_save(const hts_idx_t *idx, const char *fn, int fmt);
+        void hts_idx_save_core(const hts_idx_t *idx, void *fp, int fmt);
 	hts_idx_t *hts_idx_load(const char *fn, int fmt);
+        hts_idx_t *hts_idx_load_local(const char *fn_idx, int fmt);
 
 	uint8_t *hts_idx_get_meta(hts_idx_t *idx, int *l_meta);
 	void hts_idx_set_meta(hts_idx_t *idx, int l_meta, uint8_t *meta, int is_copy);
@@ -286,9 +289,9 @@ static inline void *ed_swap_4p(void *x)
 }
 static inline uint64_t ed_swap_8(uint64_t v)
 {
-	v = ((v & 0x00000000FFFFFFFFLLU) << 32) | (v >> 32);
-	v = ((v & 0x0000FFFF0000FFFFLLU) << 16) | ((v & 0xFFFF0000FFFF0000LLU) >> 16);
-	return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
+	v = ((v & 0x00000000FFFFFFFFULL) << 32) | (v >> 32);
+	v = ((v & 0x0000FFFF0000FFFFULL) << 16) | ((v & 0xFFFF0000FFFF0000ULL) >> 16);
+	return ((v & 0x00FF00FF00FF00FFULL) << 8) | ((v & 0xFF00FF00FF00FF00ULL) >> 8);
 }
 static inline void *ed_swap_8p(void *x)
 {

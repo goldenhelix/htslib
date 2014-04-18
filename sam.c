@@ -6,7 +6,9 @@
 #include <zlib.h>
 #include "htslib/sam.h"
 #include "htslib/bgzf.h"
+#ifndef NO_CRAM
 #include "cram/cram.h"
+#endif
 #include "htslib/hfile.h"
 
 #include "htslib/khash.h"
@@ -40,8 +42,9 @@ void bam_hdr_destroy(bam_hdr_t *h)
 
 bam_hdr_t *bam_hdr_dup(const bam_hdr_t *h0)
 {
-	if (h0 == NULL) return NULL;
 	bam_hdr_t *h;
+	int i;
+	if (h0 == NULL) return NULL;
 	if ((h = bam_hdr_init()) == NULL) return NULL;
 	// copy the simple data
 	h->n_targets = h0->n_targets;
@@ -54,7 +57,6 @@ bam_hdr_t *bam_hdr_dup(const bam_hdr_t *h0)
 	memcpy(h->text, h0->text, h->l_text);
 	h->target_len = (uint32_t*)calloc(h->n_targets, 4);
 	h->target_name = (char**)calloc(h->n_targets, sizeof(char*));
-	int i;
 	for (i = 0; i < h->n_targets; ++i) {
 		h->target_len[i] = h0->target_len[i];
 		h->target_name[i] = strdup(h0->target_name[i]);
@@ -81,7 +83,7 @@ static bam_hdr_t *hdr_from_dict(sdict_t *d)
 	return h;
 }
 
-bam_hdr_t *bam_hdr_read(BGZF *fp)
+bam_hdr_t *bam_hdr_read1(BGZF *fp, char* err_buf)
 {
 	bam_hdr_t *h;
 	char buf[4];
@@ -90,9 +92,9 @@ bam_hdr_t *bam_hdr_read(BGZF *fp)
 	// check EOF
 	has_EOF = bgzf_check_EOF(fp);
 	if (has_EOF < 0) {
-		perror("[W::sam_hdr_read] bgzf_check_EOF");
+		sprintf(err_buf, "Error reading BAM: Failed bgzf_check_EOF");
 	} else if (has_EOF == 0 && hts_verbose >= 2)
-		fprintf(stderr, "[W::%s] EOF marker is absent. The input is probably truncated.\n", __func__);
+		sprintf(err_buf, "Error reading BAM: Invalid BAM binary header");
 	// read "BAM1"
 	magic_len = bgzf_read(fp, buf, 4);
 	if (magic_len != 4 || strncmp(buf, "BAM\1", 4)) {
@@ -121,6 +123,20 @@ bam_hdr_t *bam_hdr_read(BGZF *fp)
 	}
 	return h;
 }
+
+bam_hdr_t *bam_hdr_read(BGZF *fp)
+{
+  bam_hdr_t *hdr;
+  char err_buf[1024];
+  err_buf[0] = '\0';
+  hdr = bam_hdr_read1(fp, err_buf);
+  if(err_buf[0]){
+    fprintf(stderr, "%s\n", err_buf);
+  }
+  return hdr;
+  
+}
+
 
 int bam_hdr_write(BGZF *fp, const bam_hdr_t *h)
 {
@@ -209,8 +225,9 @@ bam1_t *bam_copy1(bam1_t *bdst, const bam1_t *bsrc)
 
 bam1_t *bam_dup1(const bam1_t *bsrc)
 {
+	bam1_t *bdst;
 	if (bsrc == NULL) return NULL;
-	bam1_t *bdst = bam_init1();
+	bdst = bam_init1();
 	if (bdst == NULL) return NULL;
 	return bam_copy1(bdst, bsrc);
 }
@@ -360,13 +377,16 @@ int bam_write1(BGZF *fp, const bam1_t *b)
  *** BAM indexing ***
  ********************/
 
-static hts_idx_t *bam_index(BGZF *fp, int min_shift)
+hts_idx_t *bam_index2(BGZF *fp, int min_shift, char* err_buf, BuildBaiProgressCallback cb, void* cbData)
 {
 	int n_lvls, i, fmt;
 	bam1_t *b;
 	hts_idx_t *idx;
 	bam_hdr_t *h;
-	h = bam_hdr_read(fp);
+        int rs;
+        uint64_t lineno = 0;
+	h = bam_hdr_read1(fp, err_buf);
+        if(!h) return 0;
 	if (min_shift > 0) {
 		int64_t max_len = 0, s;
 		for (i = 0; i < h->n_targets; ++i)
@@ -378,17 +398,42 @@ static hts_idx_t *bam_index(BGZF *fp, int min_shift)
 	idx = hts_idx_init(h->n_targets, fmt, bgzf_tell(fp), min_shift, n_lvls);
 	bam_hdr_destroy(h);
 	b = bam_init1();
-	while (bam_read1(fp, b) >= 0) {
+	while ((rs = bam_read1(fp, b)) >= 0) {
 		int l, ret;
+		++lineno;
+                if(lineno % 1000 == 0){
+                  if(cb && cb(fp->block_address, cbData) == 0){
+                    hts_idx_finish(idx, bgzf_tell(fp));
+                    bam_destroy1(b);
+                    return 0;
+                  }
+                }
 		l = bam_cigar2rlen(b->core.n_cigar, bam_get_cigar(b));
 		if (l == 0) l = 1; // no zero-length records
 		ret = hts_idx_push(idx, b->core.tid, b->core.pos, b->core.pos + l, bgzf_tell(fp), !(b->core.flag&BAM_FUNMAP));
-		if (ret < 0) break; // unsorted
+		if (ret < 0){
+                  sprintf(err_buf, "BAM file is out of order at line %llu\n", (unsigned long long)lineno);
+                  break; // unsorted
+                }
 	}
 	hts_idx_finish(idx, bgzf_tell(fp));
 	bam_destroy1(b);
+        if(rs < -1)
+          sprintf(err_buf, "BAM file truncated");
 	return idx;
 }
+
+hts_idx_t *bam_index(BGZF *fp, int min_shift)
+{
+  hts_idx_t *idx;
+  char err_buf[1024];
+  idx = bam_index2(fp, min_shift, err_buf, 0, 0);
+  if(!idx){
+    fprintf(stderr, "%s\n", err_buf);
+  }
+  return idx;
+}
+
 
 int bam_index_build(const char *fn, int min_shift)
 {
@@ -398,7 +443,9 @@ int bam_index_build(const char *fn, int min_shift)
 
 	if ((fp = hts_open(fn, "r")) == 0) return -1;
 	if (fp->is_cram) {
+#ifndef NO_CRAM
 	    	ret = cram_index_build(fp->fp.cram, fn);
+#endif
 	} else {
 	    	idx = bam_index(fp->fp.bgzf, min_shift);
 		hts_idx_save(idx, fn, min_shift > 0
@@ -421,6 +468,7 @@ static int bam_readrec(BGZF *fp, void *ignored, void *bv, int *tid, int *beg, in
 	return ret;
 }
 
+#ifndef NO_CRAM
 // This is used only with read_rest=1 iterators, so need not set tid/beg/end.
 static int cram_readrec(BGZF *ignored, void *fpv, void *bv, int *tid, int *beg, int *end)
 {
@@ -428,6 +476,7 @@ static int cram_readrec(BGZF *ignored, void *fpv, void *bv, int *tid, int *beg, 
 	bam1_t *b = bv;
 	return cram_get_bam_seq(fp->fp.cram, &b);
 }
+#endif
 
 // This is used only with read_rest=1 iterators, so need not set tid/beg/end.
 static int sam_bam_cram_readrec(BGZF *bgzfp, void *fpv, void *bv, int *tid, int *beg, int *end)
@@ -435,7 +484,9 @@ static int sam_bam_cram_readrec(BGZF *bgzfp, void *fpv, void *bv, int *tid, int 
 	htsFile *fp = fpv;
 	bam1_t *b = bv;
 	if (fp->is_bin) return bam_read1(bgzfp, b);
+#ifndef NO_CRAM
 	else if (fp->is_cram) return cram_get_bam_seq(fp->fp.cram, &b);
+#endif
 	else {
 		// TODO Need headers available to implement this for SAM files
 		fprintf(stderr, "[sam_bam_cram_readrec] Not implemented for SAM files -- Exiting\n");
@@ -443,6 +494,7 @@ static int sam_bam_cram_readrec(BGZF *bgzfp, void *fpv, void *bv, int *tid, int 
 	}
 }
 
+#ifndef NO_CRAM
 // The CRAM implementation stores the loaded index within the cram_fd rather
 // than separately as is done elsewhere in htslib.  So if p is a pointer to
 // an hts_idx_t with p->fmt == HTS_FMT_CRAI, then it actually points to an
@@ -451,10 +503,12 @@ typedef struct hts_cram_idx_t {
     int fmt;
     cram_fd *cram;
 } hts_cram_idx_t;
+#endif
 
 hts_idx_t *sam_index_load(samFile *fp, const char *fn)
 {
 	if (fp->is_bin) return bam_index_load(fn);
+#ifndef NO_CRAM
 	else if (fp->is_cram) {
 		if (cram_index_load(fp->fp.cram, fn) < 0) return NULL;
 		// Cons up a fake "index" just pointing at the associated cram_fd:
@@ -464,9 +518,11 @@ hts_idx_t *sam_index_load(samFile *fp, const char *fn)
 		idx->cram = fp->fp.cram;
 		return (hts_idx_t *) idx;
 	}
+#endif
 	else return NULL; // TODO Would use tbx_index_load if it returned hts_idx_t
 }
 
+#ifndef NO_CRAM
 static hts_itr_t *cram_itr_query(const hts_idx_t *idx, int tid, int beg, int end, hts_readrec_func *readrec)
 {
 	const hts_cram_idx_t *cidx = (const hts_cram_idx_t *) idx;
@@ -506,30 +562,39 @@ static hts_itr_t *cram_itr_query(const hts_idx_t *idx, int tid, int beg, int end
 
 	return iter;
 }
+#endif
 
 hts_itr_t *sam_itr_queryi(const hts_idx_t *idx, int tid, int beg, int end)
 {
+#ifndef NO_CRAM
 	const hts_cram_idx_t *cidx = (const hts_cram_idx_t *) idx;
+#endif
 	if (idx == NULL)
 		return hts_itr_query(NULL, tid, beg, end, sam_bam_cram_readrec);
+#ifndef NO_CRAM
 	else if (cidx->fmt == HTS_FMT_CRAI)
 		return cram_itr_query(idx, tid, beg, end, cram_readrec);
+#endif
 	else
 		return hts_itr_query(idx, tid, beg, end, bam_readrec);
 }
 
+#ifndef NO_CRAM
 static int cram_name2id(void *fdv, const char *ref)
 {
 	cram_fd *fd = (cram_fd *) fdv;
 	return sam_hdr_name2ref(fd->header, ref);
 }
+#endif
 
 hts_itr_t *sam_itr_querys(const hts_idx_t *idx, bam_hdr_t *hdr, const char *region)
 {
+#ifndef NO_CRAM
 	const hts_cram_idx_t *cidx = (const hts_cram_idx_t *) idx;
 	if (cidx->fmt == HTS_FMT_CRAI)
 		return hts_itr_querys(idx, region, cram_name2id, cidx->cram, cram_itr_query, cram_readrec);
 	else
+#endif
 		return hts_itr_querys(idx, region, (hts_name2id_f)(bam_name2id), hdr, hts_itr_query, bam_readrec);
 }
 
@@ -582,8 +647,10 @@ bam_hdr_t *sam_hdr_read(htsFile *fp)
 {
 	if (fp->is_bin) {
 		return bam_hdr_read(fp->fp.bgzf);
+#ifndef NO_CRAM
 	} else if (fp->is_cram) {
-		return cram_header_to_bam(fp->fp.cram->header);
+                return cram_header_to_bam(fp->fp.cram->header);
+#endif
 	} else {
 		kstring_t str;
 		bam_hdr_t *h;
@@ -597,7 +664,7 @@ bam_hdr_t *sam_hdr_read(htsFile *fp)
 		}
 		if (! has_SQ && fp->fn_aux) {
 			char line[2048];
-			FILE *f = fopen(fp->fn_aux, "r");
+			FILE *f = fopen(fp->fn_aux, "rb");
 			if (f == NULL) return NULL;
 			while (fgets(line, sizeof line, f)) {
 				const char *name = strtok(line, "\t");
@@ -617,11 +684,13 @@ int sam_hdr_write(htsFile *fp, const bam_hdr_t *h)
 {
 	if (fp->is_bin) {
 		bam_hdr_write(fp->fp.bgzf, h);
+#ifndef NO_CRAM
 	} else if (fp->is_cram) {
 		cram_fd *fd = fp->fp.cram;
 		if (cram_set_header(fd, bam_header_to_cram((bam_hdr_t *)h)) < 0) return -1;
 		if (cram_write_SAM_hdr(fd, fd->header) < 0) return -1;
-	} else {
+#endif
+        } else {
 		char *p;
 		hputs(h->text, fp->fp.hfile);
 		p = strstr(h->text, "@SQ\t"); // FIXME: we need a loop to make sure "@SQ\t" does not match something unwanted!!!
@@ -834,8 +903,10 @@ int sam_read1(htsFile *fp, bam_hdr_t *h, bam1_t *b)
 				return -3;
 		}
 		return r;
+#ifndef NO_CRAM
 	} else if (fp->is_cram) {
 		return cram_get_bam_seq(fp->fp.cram, &b);
+#endif
 	} else {
 		int ret;
 err_recover:
@@ -979,8 +1050,10 @@ int sam_write1(htsFile *fp, const bam_hdr_t *h, const bam1_t *b)
 {
 	if (fp->is_bin) {
 		return bam_write1(fp->fp.bgzf, b);
+#ifndef NO_CRAM
 	} else if (fp->is_cram) {
 		return cram_put_bam_seq(fp->fp.cram, (bam1_t *)b);
+#endif
 	} else {
 		if (sam_format1(h, b, &fp->line) < 0) return -1;
 		if ( hwrite(fp->fp.hfile, fp->line.s, fp->line.l) != fp->line.l ) return -1;
@@ -1009,8 +1082,8 @@ void bam_aux_append(bam1_t *b, const char tag[2], char type, int len, uint8_t *d
 
 static inline uint8_t *skip_aux(uint8_t *s)
 {
-	int size = aux_type2size(*s); ++s; // skip type
 	uint32_t n;
+	int size = aux_type2size(*s); ++s; // skip type
 	switch (size) {
 	case 'Z':
 	case 'H':
@@ -1433,8 +1506,9 @@ static void tweak_overlap_quality(bam1_t *a, bam1_t *b)
     int a_iref = iref - a->core.pos;
     int b_iref = iref - b->core.pos;
     int a_ret = cigar_iref2iseq_set(&a_cigar, a_cigar_max, &a_icig, &a_iseq, &a_iref);
+    int b_ret;
     if ( a_ret<0 ) return;  // no overlap
-    int b_ret = cigar_iref2iseq_set(&b_cigar, b_cigar_max, &b_icig, &b_iseq, &b_iref);
+    b_ret = cigar_iref2iseq_set(&b_cigar, b_cigar_max, &b_icig, &b_iseq, &b_iref);
     if ( b_ret<0 ) return;  // no overlap
 
     #if DBG
@@ -1498,6 +1572,7 @@ static void tweak_overlap_quality(bam1_t *a, bam1_t *b)
 //
 static void overlap_push(bam_plp_t iter, lbnode_t *node)
 {
+    khiter_t kitr;
     if ( !iter->overlaps ) return;
 
     // mapped mates and paired reads only
@@ -1506,7 +1581,7 @@ static void overlap_push(bam_plp_t iter, lbnode_t *node)
     // no overlap possible, unless some wild cigar
     if ( abs(node->b.core.isize) >= 2*node->b.core.l_qseq ) return;
 
-    khiter_t kitr = kh_get(olap_hash, iter->overlaps, bam_get_qname(&node->b));
+    kitr = kh_get(olap_hash, iter->overlaps, bam_get_qname(&node->b));
     if ( kitr==kh_end(iter->overlaps) )
     {
         int ret;
@@ -1526,9 +1601,9 @@ static void overlap_push(bam_plp_t iter, lbnode_t *node)
 
 static void overlap_remove(bam_plp_t iter, const bam1_t *b)
 {
+    khiter_t kitr;
     if ( !iter->overlaps ) return;
 
-    khiter_t kitr;
     if ( b )
     {
         kitr = kh_get(olap_hash, iter->overlaps, bam_get_qname(b));
@@ -1635,13 +1710,13 @@ int bam_plp_push(bam_plp_t iter, const bam1_t *b)
 
 const bam_pileup1_t *bam_plp_auto(bam_plp_t iter, int *_tid, int *_pos, int *_n_plp)
 {
+        int ret;
 	const bam_pileup1_t *plp;
 	if (iter->func == 0 || iter->error) { *_n_plp = -1; return 0; }
 	if ((plp = bam_plp_next(iter, _tid, _pos, _n_plp)) != 0) return plp;
 	else { // no pileup line can be obtained; read alignments
 		*_n_plp = 0;
 		if (iter->is_eof) return 0;
-        int ret;
 		while ( (ret=iter->func(iter->data, iter->b)) >= 0) {
 			if (bam_plp_push(iter, iter->b) < 0) {
 				*_n_plp = -1;

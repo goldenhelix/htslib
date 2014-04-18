@@ -30,7 +30,9 @@
 #include <errno.h>
 #include <unistd.h>
 #include <assert.h>
+#ifdef BGZF_MT
 #include <pthread.h>
+#endif
 #include <sys/types.h>
 #include <inttypes.h>
 
@@ -345,6 +347,7 @@ int bgzf_read_block(BGZF *fp)
 {
 	uint8_t header[BLOCK_HEADER_LENGTH], *compressed_block;
 	int count, size = 0, block_length, remaining;
+        int64_t block_address;
 
     // Reading an uncompressed file
     if ( !fp->is_compressed )
@@ -362,7 +365,6 @@ int bgzf_read_block(BGZF *fp)
     }
 
     // Reading compressed file
-	int64_t block_address;
 	block_address = htell(fp->fp);
 	if (fp->cache_size && load_block_from_cache(fp, block_address)) return 0;
     count = hread(fp->fp, header, sizeof(header));
@@ -585,6 +587,7 @@ int bgzf_mt(BGZF *fp, int n_threads, int n_sub_blks)
 
 int bgzf_flush(BGZF *fp)
 {
+	int block_length;
 	if (!fp->is_write) return 0;
 #ifdef BGZF_MT
 	if (fp->mt) return mt_flush(fp);
@@ -595,7 +598,7 @@ int bgzf_flush(BGZF *fp)
             bgzf_index_add_block(fp);
             fp->idx->ublock_addr += fp->block_offset;
         }
-		int block_length = deflate_block(fp, fp->block_offset);
+		block_length = deflate_block(fp, fp->block_offset);
 		if (block_length < 0) return -1;
 		if (hwrite(fp->fp, fp->compressed_block, block_length) != block_length) {
 			fp->errcode |= BGZF_ERR_IO; // possibly truncated file
@@ -621,11 +624,13 @@ int bgzf_flush_try(BGZF *fp, ssize_t size)
 
 ssize_t bgzf_write(BGZF *fp, const void *data, size_t length)
 {
+  const uint8_t *input;
+  ssize_t remaining;
     if ( !fp->is_compressed )
         return hwrite(fp->fp, data, length);
 
-	const uint8_t *input = (const uint8_t*)data;
-	ssize_t remaining = length;
+	input = (const uint8_t*)data;
+	remaining = length;
 	assert(fp->is_write);
 	while (remaining > 0) {
 		uint8_t* buffer = (uint8_t*)fp->uncompressed_block;
@@ -818,10 +823,12 @@ int bgzf_index_add_block(BGZF *fp)
 
 int bgzf_index_dump(BGZF *fp, const char *bname, const char *suffix)
 {
+    char *tmp = NULL;
+    FILE *idx;
+    int i;
     if (bgzf_flush(fp) != 0) return -1;
 
     assert(fp->idx);
-    char *tmp = NULL;
     if ( suffix )
     {
         int blen = strlen(bname);
@@ -832,7 +839,7 @@ int bgzf_index_dump(BGZF *fp, const char *bname, const char *suffix)
         memcpy(tmp+blen,suffix,slen+1);
     }
 
-    FILE *idx = fopen(tmp?tmp:bname,"wb");
+    idx = fopen(tmp?tmp:bname,"wb");
     if ( tmp ) free(tmp);
     if ( !idx ) return -1;
 
@@ -840,7 +847,6 @@ int bgzf_index_dump(BGZF *fp, const char *bname, const char *suffix)
     // for reading. The terminating record is not present when opened for writing.
     // This is not a bug.
 
-    int i;
     if ( fp->is_be )
     {
         uint64_t x = fp->idx->noffs - 1;
@@ -869,6 +875,9 @@ int bgzf_index_dump(BGZF *fp, const char *bname, const char *suffix)
 int bgzf_index_load(BGZF *fp, const char *bname, const char *suffix)
 {
     char *tmp = NULL;
+    FILE *idx;
+    uint64_t x;
+    int i;
     if ( suffix )
     {
         int blen = strlen(bname);
@@ -879,19 +888,17 @@ int bgzf_index_load(BGZF *fp, const char *bname, const char *suffix)
         memcpy(tmp+blen,suffix,slen+1);
     }
 
-    FILE *idx = fopen(tmp?tmp:bname,"rb");
+    idx = fopen(tmp?tmp:bname,"rb");
     if ( tmp ) free(tmp);
     if ( !idx ) return -1;
 
     fp->idx = (bgzidx_t*) calloc(1,sizeof(bgzidx_t));
-    uint64_t x;
     if ( fread(&x, 1, sizeof(x), idx) != sizeof(x) ) return -1;
 
     fp->idx->noffs = fp->idx->moffs = 1 + (fp->is_be ? ed_swap_8(x) : x);
     fp->idx->offs  = (bgzidx1_t*) malloc(fp->idx->moffs*sizeof(bgzidx1_t));
     fp->idx->offs[0].caddr = fp->idx->offs[0].uaddr = 0;
 
-    int i;
     if ( fp->is_be )
     {
         int ret = 0;
@@ -919,6 +926,8 @@ int bgzf_index_load(BGZF *fp, const char *bname, const char *suffix)
 
 int bgzf_useek(BGZF *fp, long uoffset, int where)
 {
+    int ilo, ihi;
+    int i;
     if ( !fp->is_compressed )
     {
         if (hseek(fp->fp, uoffset, SEEK_SET) < 0)
@@ -941,7 +950,8 @@ int bgzf_useek(BGZF *fp, long uoffset, int where)
     }
 
     // binary search
-    int ilo = 0, ihi = fp->idx->noffs - 1;
+    ilo = 0;
+    ihi = fp->idx->noffs - 1;
     while ( ilo<=ihi )
     {
         int i = (ilo+ihi)*0.5;
@@ -949,7 +959,7 @@ int bgzf_useek(BGZF *fp, long uoffset, int where)
         else if ( uoffset >= fp->idx->offs[i].uaddr ) ilo = i + 1;
         else break;
     }
-    int i = ilo-1;
+    i = ilo-1;
     if (hseek(fp->fp, fp->idx->offs[i].caddr, SEEK_SET) < 0)
     {
         fp->errcode |= BGZF_ERR_IO;

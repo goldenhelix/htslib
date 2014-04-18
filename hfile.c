@@ -23,6 +23,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.  */
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -294,7 +295,10 @@ void hclose_abruptly(hFILE *fp)
  * File descriptor backend *
  ***************************/
 
+
+#ifdef _USE_KNETFILE
 #include <sys/socket.h>
+#endif
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -318,8 +322,12 @@ static ssize_t fd_read(hFILE *fpv, void *buffer, size_t nbytes)
     hFILE_fd *fp = (hFILE_fd *) fpv;
     ssize_t n;
     do {
+#ifdef _USE_KNETFILE
         n = fp->is_socket? recv(fp->fd, buffer, nbytes, 0)
                          : read(fp->fd, buffer, nbytes);
+#else
+        n = read(fp->fd, buffer, nbytes);
+#endif
     } while (n < 0 && errno == EINTR);
     return n;
 }
@@ -329,8 +337,12 @@ static ssize_t fd_write(hFILE *fpv, const void *buffer, size_t nbytes)
     hFILE_fd *fp = (hFILE_fd *) fpv;
     ssize_t n;
     do {
+#ifdef _USE_KNETFILE
         n = fp->is_socket?  send(fp->fd, buffer, nbytes, 0)
                          : write(fp->fd, buffer, nbytes);
+#else
+        n = write(fp->fd, buffer, nbytes);
+#endif
     } while (n < 0 && errno == EINTR);
     return n;
 }
@@ -353,7 +365,11 @@ static int fd_flush(hFILE *fpv)
 #endif
         // Ignore invalid-for-fsync(2) errors due to being, e.g., a pipe,
         // and operation-not-supported errors (Mac OS X)
+#ifdef _WIN32
+        if (ret < 0 && (errno == EINVAL)) ret = 0;
+#else
         if (ret < 0 && (errno == EINVAL || errno == ENOTSUP)) ret = 0;
+#endif
     } while (ret < 0 && errno == EINTR);
     return ret;
 }
@@ -363,7 +379,7 @@ static int fd_close(hFILE *fpv)
     hFILE_fd *fp = (hFILE_fd *) fpv;
     int ret;
     do {
-#ifdef HAVE_CLOSESOCKET
+#if defined(HAVE_CLOSESOCKET) && defined(_USE_KNETFILE)
         ret = fp->is_socket? closesocket(fp->fd) : close(fp->fd);
 #else
         ret = close(fp->fd);
@@ -379,9 +395,13 @@ static const struct hFILE_backend fd_backend =
 
 static size_t blksize(int fd)
 {
+#ifdef _WIN32
+  return 1024; //msvc does not defin stat.st_blksize
+#else
     struct stat sbuf;
     if (fstat(fd, &sbuf) != 0) return 0;
     return sbuf.st_blksize;
+#endif
 }
 
 static hFILE *hopen_fd(const char *filename, const char *mode)
@@ -499,9 +519,10 @@ static const struct hFILE_backend mem_backend =
 static hFILE *hopen_mem(const char *data, const char *mode)
 {
     // TODO Implement write modes, which will require memory allocation
+    hFILE_mem *fp;
     if (strchr(mode, 'r') == NULL) { errno = EINVAL; return NULL; }
 
-    hFILE_mem *fp = (hFILE_mem *) hfile_init(sizeof (hFILE_mem), mode, 0);
+    fp = (hFILE_mem *) hfile_init(sizeof (hFILE_mem), mode, 0);
     if (fp == NULL) return NULL;
 
     fp->buffer = data;
@@ -518,9 +539,12 @@ static hFILE *hopen_mem(const char *data, const char *mode)
 
 hFILE *hopen(const char *fname, const char *mode)
 {
+#ifdef _USE_KNETFILE
     if (strncmp(fname, "http://", 7) == 0 ||
         strncmp(fname, "ftp://", 6) == 0) return hopen_net(fname, mode);
-    else if (strncmp(fname, "data:", 5) == 0) return hopen_mem(fname + 5, mode);
+    else
+#endif
+      if (strncmp(fname, "data:", 5) == 0) return hopen_mem(fname + 5, mode);
     else if (strcmp(fname, "-") == 0) return hopen_fd_stdinout(mode);
     else return hopen_fd(fname, mode);
 }

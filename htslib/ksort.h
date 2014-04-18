@@ -69,6 +69,10 @@ typedef struct {
 	int depth;
 } ks_isort_stack_t;
 
+#ifdef _WIN32
+extern double drand48();
+#endif
+
 #define KSORT_SWAP(type_t, a, b) { register type_t t=(a); (a)=(b); (b)=t; }
 
 #define KSORT_INIT(name, type_t, __sort_lt)								\

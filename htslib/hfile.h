@@ -28,6 +28,14 @@ DEALINGS IN THE SOFTWARE.  */
 #include <string.h>
 
 #include <sys/types.h>
+#include <unistd.h>
+
+#ifdef _WIN32
+//Override stdio defines to use 64-bit versions on windows
+#include <io.h>
+#define off_t int64_t
+#define lseek(fp, offset, whence) _lseeki64(fp, offset, whence)
+#endif
 
 #include "hts_defs.h"
 

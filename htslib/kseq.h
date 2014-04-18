@@ -95,9 +95,10 @@ typedef struct __kstring_t {
 #define __KS_GETUNTIL(SCOPE, __read) \
 	SCOPE int ks_getuntil2(kstream_t *ks, int delimiter, kstring_t *str, int *dret, int append)  \
 	{ \
+                uint64_t seek_pos;   \
 		if (dret) *dret = 0; \
 		str->l = append? str->l : 0; \
-        uint64_t seek_pos = str->l; \
+                seek_pos = str->l;                                 \
 		if (ks->begin >= ks->end && ks->is_eof) return -1; \
 		for (;;) { \
 			int i; \

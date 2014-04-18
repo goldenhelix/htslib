@@ -66,9 +66,9 @@ static inline uint32_t byte_swap_4(uint32_t v){
 }
 
 static inline uint64_t byte_swap_8(uint64_t v){
-	v = ((v & 0x00000000FFFFFFFFLLU) << 32) | (v >> 32);
-	v = ((v & 0x0000FFFF0000FFFFLLU) << 16) | ((v & 0xFFFF0000FFFF0000LLU) >> 16);
-	return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
+	v = ((v & 0x00000000FFFFFFFFULL) << 32) | (v >> 32);
+	v = ((v & 0x0000FFFF0000FFFFULL) << 16) | ((v & 0xFFFF0000FFFF0000ULL) >> 16);
+	return ((v & 0x00FF00FF00FF00FFULL) << 8) | ((v & 0xFF00FF00FF00FF00ULL) >> 8);
 }
 
 static inline int is_big_endian(){
@@ -188,7 +188,7 @@ static RAZF* razf_open_w(int fd){
 	return rz;
 }
 
-static void _razf_write(RAZF* rz, const void *data, int size){
+static void _razf_write(RAZF* rz, const char *data, int size){
 	int tout;
 	rz->stream->avail_in = size;
 	rz->stream->next_in  = (Bytef*)data;
@@ -265,7 +265,7 @@ static void razf_end_flush(RAZF *rz){
 	}
 }
 
-static void _razf_buffered_write(RAZF *rz, const void *data, size_t size){
+static void _razf_buffered_write(RAZF *rz, const char *data, size_t size){
 	int i, n;
 	while(1){
 		if(rz->buf_len == RZ_BUFFER_SIZE){
@@ -286,7 +286,7 @@ static void _razf_buffered_write(RAZF *rz, const void *data, size_t size){
 	}
 }
 
-ssize_t razf_write(RAZF* rz, const void *data, size_t size){
+ssize_t razf_write(RAZF* rz, const char *data, size_t size){
 	size_t ori_size;
 	int n;
 	int64_t next_block;
@@ -563,7 +563,7 @@ int razf_get_data_size(RAZF *rz, int64_t *u_size, int64_t *c_size){
 	}
 }
 
-static ssize_t _razf_read(RAZF* rz, void *data, size_t size){
+static ssize_t _razf_read(RAZF* rz, char *data, size_t size){
 	int ret, tin;
 	if(rz->z_eof || rz->z_err) return 0;
 	if (rz->file_type == FILE_TYPE_PLAIN) {
@@ -621,7 +621,7 @@ static ssize_t _razf_read(RAZF* rz, void *data, size_t size){
 	return size - rz->stream->avail_out;
 }
 
-ssize_t razf_read(RAZF *rz, void *data, size_t size){
+ssize_t razf_read(RAZF *rz, char *data, size_t size){
 	size_t ori_size;
 	int i;
 	ori_size = size;

@@ -9,14 +9,22 @@ int kvsprintf(kstring_t *s, const char *fmt, va_list ap)
 {
 	va_list args;
 	int l;
+#ifdef _WIN32
+        args = ap;
+#else
 	va_copy(args, ap);
+#endif
 	l = vsnprintf(s->s + s->l, s->m - s->l, fmt, args); // This line does not work with glibc 2.0. See `man snprintf'.
 	va_end(args);
 	if (l + 1 > s->m - s->l) {
 		s->m = s->l + l + 2;
 		kroundup32(s->m);
 		s->s = (char*)realloc(s->s, s->m);
+#ifdef _WIN32
+                args = ap;
+#else
 		va_copy(args, ap);
+#endif
 		l = vsnprintf(s->s + s->l, s->m - s->l, fmt, args);
 		va_end(args);
 	}

@@ -940,7 +940,7 @@ bcf_sr_regions_t *bcf_sr_regions_init(const char *regions, int is_file, int ichr
     reg->start = reg->end = -1;
     reg->prev_start = reg->prev_seq = -1;
 
-    reg->file = hts_open(regions, "rb");
+    reg->file = hts_open(regions, "r");
     if ( !reg->file )
     {
         fprintf(stderr,"[%s:%d %s] Could not open file: %s\n", __FILE__,__LINE__,__FUNCTION__,regions);
