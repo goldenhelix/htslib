@@ -691,7 +691,7 @@ void bgzf_set_cache_size(BGZF *fp, int cache_size)
 int bgzf_check_EOF(BGZF *fp)
 {
 	uint8_t buf[28];
-	off_t offset = htell(fp->fp);
+	int64_t offset = htell(fp->fp);
 	if (hseek(fp->fp, -28, SEEK_END) < 0) {
 		if (errno == ESPIPE) { hclearerr(fp->fp); return 2; }
 		else return -1;
@@ -924,7 +924,7 @@ int bgzf_index_load(BGZF *fp, const char *bname, const char *suffix)
 
 }
 
-int bgzf_useek(BGZF *fp, long uoffset, int where)
+int bgzf_useek(BGZF *fp, int64_t uoffset, int where)
 {
     int ilo, ihi;
     int i;
@@ -978,7 +978,7 @@ int bgzf_useek(BGZF *fp, long uoffset, int where)
     return 0;
 }
 
-long bgzf_utell(BGZF *fp)
+int64_t bgzf_utell(BGZF *fp)
 {
     return fp->uncompressed_address;    // currently maintained only when reading
 }

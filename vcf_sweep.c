@@ -23,8 +23,8 @@ struct _bcf_sweep_t
 };
 
 BGZF *hts_get_bgzfp(htsFile *fp);
-int hts_useek(htsFile *file, long uoffset, int where);
-long hts_utell(htsFile *file);
+int hts_useek(htsFile *file, int64_t uoffset, int where);
+int64_t hts_utell(htsFile *file);
 
 static inline int sw_rec_equal(bcf_sweep_t *sw, bcf1_t *rec)
 {

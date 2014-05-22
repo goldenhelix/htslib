@@ -33,7 +33,6 @@ DEALINGS IN THE SOFTWARE.  */
 #ifdef _WIN32
 //Override stdio defines to use 64-bit versions on windows
 #include <io.h>
-#define off_t int64_t
 #define lseek(fp, offset, whence) _lseeki64(fp, offset, whence)
 #endif
 
@@ -50,7 +49,7 @@ struct hFILE_backend;
 typedef struct hFILE {
     char *buffer, *begin, *end, *limit;
     const struct hFILE_backend *backend;
-    off_t offset;
+    int64_t offset;
     int at_eof:1;
     int has_errno;
 } hFILE;
@@ -103,13 +102,13 @@ static inline void hclearerr(hFILE *fp)
   @return    The resulting offset within the stream (as per lseek(2)),
     or negative if an error occurred.
 */
-off_t hseek(hFILE *fp, off_t offset, int whence) HTS_RESULT_USED;
+int64_t hseek(hFILE *fp, int64_t offset, int whence) HTS_RESULT_USED;
 
 /*!
   @abstract  Report the current stream offset
   @return    The offset within the stream, starting from zero.
 */
-static inline off_t htell(hFILE *fp)
+static inline int64_t htell(hFILE *fp)
 {
     return fp->offset + (fp->begin - fp->buffer);
 }

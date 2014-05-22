@@ -261,7 +261,7 @@ extern "C" {
      *
      *  Returns 0 on success and -1 on error.
 	 */
-    int bgzf_useek(BGZF *fp, long uoffset, int where);
+    int bgzf_useek(BGZF *fp, int64_t uoffset, int where);
 
 	/**
      *  Position in uncompressed BGZF
@@ -270,7 +270,7 @@ extern "C" {
      *
      *  Returns the current offset on success and -1 on error.
 	 */
-    long bgzf_utell(BGZF *fp);
+     int64_t bgzf_utell(BGZF *fp);
 
 	/**
 	 * Tell BGZF to build index while compressing.

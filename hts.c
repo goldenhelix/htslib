@@ -257,7 +257,7 @@ BGZF *hts_get_bgzfp(htsFile *fp)
     else
         return ((kstream_t*)fp->fp.voidp)->f;
 }
-int hts_useek(htsFile *fp, long uoffset, int where)
+int hts_useek(htsFile *fp, int64_t uoffset, int where)
 {
     if ( fp->is_bin )
         return bgzf_useek(fp->fp.bgzf, uoffset, where);
@@ -268,7 +268,7 @@ int hts_useek(htsFile *fp, long uoffset, int where)
         return bgzf_useek(((kstream_t*)fp->fp.voidp)->f, uoffset, where);
     }
 }
-long hts_utell(htsFile *fp)
+int64_t hts_utell(htsFile *fp)
 {
     if ( fp->is_bin )
         return bgzf_utell(fp->fp.bgzf);

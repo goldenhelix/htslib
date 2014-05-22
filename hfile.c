@@ -40,7 +40,7 @@ DEALINGS IN THE SOFTWARE.  */
 
    const hFILE_backend *backend;  // Methods to refill/flush I/O buffer
 
-   off_t offset;     // Offset within the stream of buffer position 0
+   int64_t offset;     // Offset within the stream of buffer position 0
    int at_eof:1;     // For reading, whether EOF has been seen
    int has_errno;    // Error number from the last failure on this stream
 
@@ -247,9 +247,9 @@ int hputs2(const char *text, size_t totalbytes, size_t ncopied, hFILE *fp)
     return (hwrite2(fp, text, totalbytes, ncopied) >= 0)? 0 : EOF;
 }
 
-off_t hseek(hFILE *fp, off_t offset, int whence)
+int64_t hseek(hFILE *fp, int64_t offset, int whence)
 {
-    off_t pos;
+    int64_t pos;
 
     if (writebuffer_is_nonempty(fp)) {
         int ret = flush_buffer(fp);
@@ -347,7 +347,7 @@ static ssize_t fd_write(hFILE *fpv, const void *buffer, size_t nbytes)
     return n;
 }
 
-static off_t fd_seek(hFILE *fpv, off_t offset, int whence)
+static int64_t fd_seek(hFILE *fpv, int64_t offset, int whence)
 {
     hFILE_fd *fp = (hFILE_fd *) fpv;
     return lseek(fp->fd, offset, whence);
@@ -483,7 +483,7 @@ static ssize_t mem_read(hFILE *fpv, void *buffer, size_t nbytes)
     return nbytes;
 }
 
-static off_t mem_seek(hFILE *fpv, off_t offset, int whence)
+static int64_t mem_seek(hFILE *fpv, int64_t offset, int whence)
 {
     hFILE_mem *fp = (hFILE_mem *) fpv;
     size_t absoffset = (offset >= 0)? offset : -offset;
