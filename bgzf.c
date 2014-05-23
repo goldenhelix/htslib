@@ -295,11 +295,12 @@ static int inflate_gzip_block(BGZF *fp, int cached)
         else cached = 0;
         do
         {
+            unsigned int have;
             fp->gz_stream->next_out = (Bytef*)fp->uncompressed_block + fp->block_offset;
             fp->gz_stream->avail_out = BGZF_MAX_BLOCK_SIZE - fp->block_offset;
             ret = inflate(fp->gz_stream, Z_NO_FLUSH);
             if ( ret<0 ) return -1;
-            unsigned int have = BGZF_MAX_BLOCK_SIZE - fp->gz_stream->avail_out;
+            have = BGZF_MAX_BLOCK_SIZE - fp->gz_stream->avail_out;
             if ( have ) return have; 
         }
         while ( fp->gz_stream->avail_out == 0 );
@@ -387,6 +388,7 @@ int bgzf_read_block(BGZF *fp)
 	uint8_t header[BLOCK_HEADER_LENGTH], *compressed_block;
 	int count, size = 0, block_length, remaining;
         int64_t block_address;
+        int ret;
 
     // Reading an uncompressed file
     if ( !fp->is_compressed )
@@ -423,7 +425,6 @@ int bgzf_read_block(BGZF *fp)
         fp->block_length = 0;
         return 0;
     }
-    int ret;
     if ( count != sizeof(header) || (ret=check_header(header))==-2 ) 
     {
         fp->errcode |= BGZF_ERR_HEADER;
@@ -432,10 +433,11 @@ int bgzf_read_block(BGZF *fp)
     if ( ret==-1 )
     {
         // GZIP, not BGZF
+        int nskip;
         uint8_t *cblock = (uint8_t*)fp->compressed_block;
         memcpy(cblock, header, sizeof(header));
         count = hread(fp->fp, cblock+sizeof(header), BGZF_BLOCK_SIZE - sizeof(header)) + sizeof(header);
-        int nskip = 10;
+        nskip = 10;
 
         // Check optional fields to skip: FLG.FNAME,FLG.FCOMMENT,FLG.FHCRC,FLG.FEXTRA
         // Note: Some of these fields are untested, I did not have appropriate data available
@@ -467,7 +469,7 @@ int bgzf_read_block(BGZF *fp)
 
         fp->is_gzip = 1;
         fp->gz_stream = (z_stream*) calloc(1,sizeof(z_stream));
-        int ret = inflateInit2(fp->gz_stream, -15);
+        ret = inflateInit2(fp->gz_stream, -15);
         if (ret != Z_OK) 
         {
             fp->errcode |= BGZF_ERR_ZLIB;
