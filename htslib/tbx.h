@@ -10,13 +10,13 @@
 #define TBX_VCF     2
 #define TBX_UCSC    0x10000
 
-typedef struct {
+typedef struct _tbx_conf_t {
 	int32_t preset;
 	int32_t sc, bc, ec; // seq col., beg col. and end col.
 	int32_t meta_char, line_skip;
 } tbx_conf_t;
 
-typedef struct {
+typedef struct _tbx_t {
 	tbx_conf_t conf;
 	hts_idx_t *idx;
 	void *dict;
@@ -41,7 +41,12 @@ extern "C" {
 	int tbx_readrec(BGZF *fp, void *tbxv, void *sv, int *tid, int *beg, int *end);
 
 	int tbx_index_build(const char *fn, int min_shift, const tbx_conf_t *conf);
-	tbx_t *tbx_index_load(const char *fn);
+
+	typedef int (*BuildTbiProgressCallback)(uint64_t pos, void* cbData);
+	tbx_t *tbx_index2(BGZF *fp, int min_shift, const tbx_conf_t *conf, char* err_buf, BuildTbiProgressCallback cb, void* cbData);
+
+  	tbx_t *tbx_index_load(const char *fn);
+	tbx_t *tbx_index_load_local(const char *fnidx);
 	const char **tbx_seqnames(tbx_t *tbx, int *n);	// free the array but not the values
 	void tbx_destroy(tbx_t *tbx);
 

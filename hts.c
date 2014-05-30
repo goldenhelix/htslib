@@ -26,7 +26,11 @@
 #include "htslib/khash.h"
 KHASH_INIT2(s2i,, kh_cstr_t, int64_t, 1, kh_str_hash_func, kh_str_hash_equal)
 
+#ifdef NO_STDERR_OUTPUT
+int hts_verbose = 0; //Don't write messages to stderr
+#else
 int hts_verbose = 3;
+#endif
 
 const char *hts_version()
 {
@@ -683,6 +687,25 @@ int hts_idx_push(hts_idx_t *idx, int tid, int beg, int end, uint64_t offset, int
 	idx->z.last_coor = beg;
 	return 0;
 }
+
+//Added to provide retrievable error message from a failed hts_idx_push
+void hts_idx_push_err(hts_idx_t *idx, int tid, int beg, int end, int64_t lineno, char* err_buf)
+{
+  //Error messages logic copied from hts_idx_push
+  if (idx->z.last_tid != tid || (idx->z.last_tid >= 0 && tid < 0)) { // change of chromosome
+    if ( tid>=0 && idx->n_no_coor )
+    {
+      sprintf(err_buf, "NO_COOR reads not in a single block at the end at line %llu [tid: %d last tid: %d]", lineno, tid, idx->z.last_tid);
+    }
+    if (tid>=0 && idx->bidx[tid] != 0)
+    {
+      sprintf(err_buf, "Chromosome blocks not continuous at line %llu. Is the file sorted?", lineno);
+    }
+  } else if (tid >= 0 && idx->z.last_coor > beg) { // test if positions are out of order
+    sprintf(err_buf, "The file is out of order at line %llu [pos %d > %d]", lineno, idx->z.last_coor, beg);
+  }
+}
+
 
 void hts_idx_destroy(hts_idx_t *idx)
 {

@@ -263,6 +263,29 @@ tbx_t *tbx_index_load(const char *fn)
 	return tbx;
 }
 
+tbx_t *tbx_index_load_local(const char *fnidx)
+{
+	tbx_t *tbx;
+	uint8_t *meta;
+	char *nm, *p;
+	uint32_t x[7];
+	int l_meta, l_nm;
+	tbx = (tbx_t*)calloc(1, sizeof(tbx_t));
+	tbx->idx = hts_idx_load_local(fnidx, HTS_FMT_TBI);
+	if ( !tbx->idx ) 
+    {
+        free(tbx);
+        return NULL;
+    }
+	meta = hts_idx_get_meta(tbx->idx, &l_meta);
+	memcpy(x, meta, 28);
+	memcpy(&tbx->conf, x, 24);
+	p = nm = (char*)meta + 28;
+	l_nm = x[6];
+	for (; p - nm < l_nm; p += strlen(p) + 1) get_tid(tbx, p, 1);
+	return tbx;
+}
+
 const char **tbx_seqnames(tbx_t *tbx, int *n)
 {
 	khash_t(s2i) *d = (khash_t(s2i)*)tbx->dict;
@@ -286,5 +309,83 @@ const char **tbx_seqnames(tbx_t *tbx, int *n)
         assert(names[tid]);
 	*n = m;
 	return names;
+}
+
+//Added by GFR to provide callback and err message friendly indexing
+
+int get_intv2(tbx_t *tbx, kstring_t *str, tbx_intv_t *intv, int is_add, char* err_buf)
+{
+  if (tbx_parse1(&tbx->conf, str->l, str->s, intv) == 0) {
+    int c = *intv->se;
+    *intv->se = '\0'; intv->tid = get_tid(tbx, intv->ss, is_add); *intv->se = c;
+    return (intv->tid >= 0 && intv->beg >= 0 && intv->end >= 0)? 0 : -1;
+  } else {
+    char *type = NULL;
+    switch (tbx->conf.preset&0xffff)
+    {
+      case TBX_SAM: type = "TBX_SAM"; break;
+      case TBX_VCF: type = "TBX_VCF"; break;
+      case TBX_UCSC: type = "TBX_UCSC"; break;
+      default: type = "TBX_GENERIC"; break;
+    }
+    sprintf(err_buf, "Failed to parse %s. \nThe offending line was: \"%s\"\n", type, str->s);
+    return -2;
+  }
+}
+
+// Fork of tbx_index from tbx.c that has error checking and utilize progress call-back
+tbx_t *tbx_index2(BGZF *fp, int min_shift, const tbx_conf_t *conf, char* err_buf, BuildTbiProgressCallback cb, void* cbData)
+{
+  tbx_t *tbx;
+  kstring_t str;
+  int ret, first = 0, n_lvls, fmt;
+  int64_t lineno = 0;
+  uint64_t last_off = 0;
+  tbx_intv_t intv;
+
+  str.s = 0; str.l = str.m = 0;
+  tbx = (tbx_t*)calloc(1, sizeof(tbx_t));
+  tbx->conf = *conf;
+  if (min_shift > 0) n_lvls = (TBX_MAX_SHIFT - min_shift + 2) / 3, fmt = HTS_FMT_CSI;
+  else min_shift = 14, n_lvls = 5, fmt = HTS_FMT_TBI;
+  while ((ret = bgzf_getline(fp, '\n', &str)) >= 0) {
+    ++lineno;
+    if(lineno % 1000 == 0){
+      if(cb && cb(fp->block_address, cbData) == 0){
+        free(str.s);
+        tbx_destroy(tbx);
+        return NULL;
+      }
+    }
+    if (lineno <= tbx->conf.line_skip || str.s[0] == tbx->conf.meta_char) {
+      last_off = bgzf_tell(fp);
+      continue;
+    }
+    if (first == 0) {
+      tbx->idx = hts_idx_init(0, fmt, last_off, min_shift, n_lvls);
+      first = 1;
+    }
+    ret = get_intv2(tbx, &str, &intv, 1, err_buf);
+    if ( ret < -1){ //maybe we want ret < 0 if we don't want to allow indexing non-chr data
+      free(str.s);
+      tbx_destroy(tbx);
+      return NULL;
+    }
+    ret = hts_idx_push(tbx->idx, intv.tid, intv.beg, intv.end, bgzf_tell(fp), 1);
+    if (ret < 0) 
+    {
+      hts_idx_push_err(tbx->idx, intv.tid, intv.beg, intv.end, lineno, err_buf);
+      free(str.s);
+      tbx_destroy(tbx);
+
+      return NULL;
+    }
+  }
+  if ( !tbx->idx ) tbx->idx = hts_idx_init(0, fmt, last_off, min_shift, n_lvls);   // empty file
+  if ( !tbx->dict ) tbx->dict = kh_init(s2i);
+  hts_idx_finish(tbx->idx, bgzf_tell(fp));
+  tbx_set_meta(tbx);
+  free(str.s);
+  return tbx;
 }
 

@@ -50,7 +50,7 @@ typedef struct __kstring_t {
  * File I/O *
  ************/
 
-typedef struct {
+typedef struct _htsFile {
 	uint32_t is_bin:1, is_write:1, is_be:1, is_cram:1, is_compressed:2, is_kstream:1, dummy:25;
 	int64_t lineno;
 	kstring_t line;
@@ -149,6 +149,8 @@ int hts_set_threads(htsFile *fp, int n);
 */
 int hts_set_fai_filename(htsFile *fp, const char *fn_aux);
 
+BGZF *hts_get_bgzfp(htsFile *fp);
+
 #ifdef __cplusplus
 }
 #endif
@@ -186,7 +188,7 @@ typedef struct {
 
 typedef int hts_readrec_func(BGZF *fp, void *data, void *r, int *tid, int *beg, int *end);
 
-typedef struct {
+typedef struct _hts_itr_t {
 	uint32_t read_rest:1, finished:1, dummy:29;
 	int tid, beg, end, n_off, i;
 	uint64_t curr_off;
@@ -208,6 +210,7 @@ extern "C" {
 	hts_idx_t *hts_idx_init(int n, int fmt, uint64_t offset0, int min_shift, int n_lvls);
 	void hts_idx_destroy(hts_idx_t *idx);
 	int hts_idx_push(hts_idx_t *idx, int tid, int beg, int end, uint64_t offset, int is_mapped);
+        void hts_idx_push_err(hts_idx_t *idx, int tid, int beg, int end, int64_t lineno, char* err_buf);
 	void hts_idx_finish(hts_idx_t *idx, uint64_t final_offset);
 
 	void hts_idx_save(const hts_idx_t *idx, const char *fn, int fmt);
