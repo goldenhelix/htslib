@@ -853,10 +853,11 @@ int bcf_read(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v)
     return bcf_subset_format(h,v);
 }
 
-int bcf_readrec(BGZF *fp, void *null, void *vv, int *tid, int *beg, int *end)
+int bcf_readrec(BGZF *fp, void *null, void *vv, int *tid, int *beg, int *end, uint64_t* off)
 {
 	bcf1_t *v = (bcf1_t *) vv;
 	int ret;
+        if(off) *off = bgzf_tell(fp);
 	if ((ret = bcf_read1_core(fp, v)) >= 0)
 		*tid = v->rid, *beg = v->pos, *end = v->pos + v->rlen;
 	return ret;

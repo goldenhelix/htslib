@@ -186,12 +186,13 @@ typedef struct {
 	uint64_t u, v;
 } hts_pair64_t;
 
-typedef int hts_readrec_func(BGZF *fp, void *data, void *r, int *tid, int *beg, int *end);
+typedef int hts_readrec_func(BGZF *fp, void *data, void *r, int *tid, int *beg, int *end, uint64_t* off);
 
 typedef struct _hts_itr_t {
 	uint32_t read_rest:1, finished:1, dummy:29;
 	int tid, beg, end, n_off, i;
 	uint64_t curr_off;
+	uint64_t last_off;
 	hts_pair64_t *off;
 	hts_readrec_func *readrec;
 	struct {

@@ -38,7 +38,7 @@ extern "C" {
 
 	/* Internal helper function used by tbx_itr_next() */
 	BGZF *hts_get_bgzfp(htsFile *fp);
-	int tbx_readrec(BGZF *fp, void *tbxv, void *sv, int *tid, int *beg, int *end);
+	int tbx_readrec(BGZF *fp, void *tbxv, void *sv, int *tid, int *beg, int *end, uint64_t* off);
 
 	int tbx_index_build(const char *fn, int min_shift, const tbx_conf_t *conf);
 

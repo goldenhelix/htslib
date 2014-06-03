@@ -468,7 +468,7 @@ int bam_index_build(const char *fn, int min_shift)
 	return ret;
 }
 
-static int bam_readrec(BGZF *fp, void *ignored, void *bv, int *tid, int *beg, int *end)
+static int bam_readrec(BGZF *fp, void *ignored, void *bv, int *tid, int *beg, int *end, uint64_t* off)
 {
 	bam1_t *b = bv;
 	int ret;
@@ -481,7 +481,7 @@ static int bam_readrec(BGZF *fp, void *ignored, void *bv, int *tid, int *beg, in
 
 #ifndef NO_CRAM
 // This is used only with read_rest=1 iterators, so need not set tid/beg/end.
-static int cram_readrec(BGZF *ignored, void *fpv, void *bv, int *tid, int *beg, int *end)
+static int cram_readrec(BGZF *ignored, void *fpv, void *bv, int *tid, int *beg, int *end, uint64_t* off)
 {
 	htsFile *fp = fpv;
 	bam1_t *b = bv;
@@ -490,7 +490,7 @@ static int cram_readrec(BGZF *ignored, void *fpv, void *bv, int *tid, int *beg, 
 #endif
 
 // This is used only with read_rest=1 iterators, so need not set tid/beg/end.
-static int sam_bam_cram_readrec(BGZF *bgzfp, void *fpv, void *bv, int *tid, int *beg, int *end)
+static int sam_bam_cram_readrec(BGZF *bgzfp, void *fpv, void *bv, int *tid, int *beg, int *end, uint64_t* off)
 {
 	htsFile *fp = fpv;
 	bam1_t *b = bv;

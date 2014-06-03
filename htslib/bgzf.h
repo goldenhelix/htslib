@@ -236,6 +236,13 @@ extern "C" {
 	int bgzf_getline(BGZF *fp, int delim, kstring_t *str);
 
 	/**
+	 * Same as bgzf_getline but sets off to be the BGZF offset of the
+	 * beginning of the line (useful for seeking back to this line at
+	 * a later time)
+	 */
+	int bgzf_getline_with_off(BGZF *fp, int delim, kstring_t *str, uint64_t* off);
+
+	/**
 	 * Read the next BGZF block.
 	 */
 	int bgzf_read_block(BGZF *fp);

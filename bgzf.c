@@ -900,6 +900,40 @@ int bgzf_getline(BGZF *fp, int delim, kstring_t *str)
 	return str->l;
 }
 
+int bgzf_getline_with_off(BGZF *fp, int delim, kstring_t *str, uint64_t* off)
+{
+	int l, state = 0;
+	unsigned char *buf = (unsigned char*)fp->uncompressed_block;
+	str->l = 0;
+	do {
+		if (fp->block_offset >= fp->block_length) {
+			if (bgzf_read_block(fp) != 0) { state = -2; break; }
+			if (fp->block_length == 0) { state = -1; break; }
+		}
+                if(str->l == 0 && off) *off = bgzf_tell(fp);
+		for (l = fp->block_offset; l < fp->block_length && buf[l] != delim; ++l);
+		if (l < fp->block_length) state = 1;
+		l -= fp->block_offset;
+		if (str->l + l + 1 >= str->m) {
+			str->m = str->l + l + 2;
+			kroundup32(str->m);
+			str->s = (char*)realloc(str->s, str->m);
+		}
+		memcpy(str->s + str->l, buf + fp->block_offset, l);
+		str->l += l;
+		fp->block_offset += l + 1;
+		if (fp->block_offset >= fp->block_length) {
+			fp->block_address = htell(fp->fp);
+			fp->block_offset = 0;
+			fp->block_length = 0;
+		} 
+	} while (state == 0);
+	if (str->l == 0 && state < 0) return state;
+    fp->uncompressed_address += str->l;
+	str->s[str->l] = 0;
+	return str->l;
+}
+
 void bgzf_index_destroy(BGZF *fp)
 {
     if ( !fp->idx ) return;

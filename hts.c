@@ -1060,6 +1060,7 @@ hts_itr_t *hts_itr_query(const hts_idx_t *idx, int tid, int beg, int end, hts_re
 			iter = (hts_itr_t*)calloc(1, sizeof(hts_itr_t));
 			iter->read_rest = 1;
 			iter->finished = finished0;
+			iter->last_off = off0;
 			iter->curr_off = off0;
 			iter->readrec = readrec;
 			return iter;
@@ -1185,7 +1186,7 @@ int hts_itr_next(BGZF *fp, hts_itr_t *iter, void *r, void *data)
 			bgzf_seek(fp, iter->curr_off, SEEK_SET);
 			iter->curr_off = 0; // only seek once
 		}
-		ret = iter->readrec(fp, data, r, &tid, &beg, &end);
+		ret = iter->readrec(fp, data, r, &tid, &beg, &end, &iter->last_off);
 		if (ret < 0) iter->finished = 1;
 		return ret;
 	}
@@ -1199,7 +1200,7 @@ int hts_itr_next(BGZF *fp, hts_itr_t *iter, void *r, void *data)
 			}
 			++iter->i;
 		}
-		if ((ret = iter->readrec(fp, data, r, &tid, &beg, &end)) >= 0) {
+		if ((ret = iter->readrec(fp, data, r, &tid, &beg, &end, &iter->last_off)) >= 0) {
 			iter->curr_off = bgzf_tell(fp);
 			if (tid != iter->tid || beg >= iter->end) { // no need to proceed
 				ret = -1; break;

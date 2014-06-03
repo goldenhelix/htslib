@@ -340,7 +340,7 @@ extern "C" {
 	int vcf_write(htsFile *fp, const bcf_hdr_t *h, bcf1_t *v);
 
 	/** Helper function for the bcf_itr_next() macro; internal use, ignore it */
-	int bcf_readrec(BGZF *fp, void *null, void *v, int *tid, int *beg, int *end);
+	int bcf_readrec(BGZF *fp, void *null, void *v, int *tid, int *beg, int *end, uint64_t* off);
 
 
 
