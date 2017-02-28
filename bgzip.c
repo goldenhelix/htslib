@@ -31,7 +31,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdarg.h>
-#include <getopt.h>
+//#include <getopt.h>
 #include <sys/stat.h>
 #include "htslib/bgzf.h"
 #include "htslib/hts.h"
@@ -61,7 +61,7 @@ static int confirm_overwrite(const char *fn)
     errno = save_errno;
     return ret;
 }
-
+/*
 static int bgzip_main_usage(void)
 {
     fprintf(stderr, "\n");
@@ -335,3 +335,5 @@ int main(int argc, char **argv)
     }
     return 0;
 }
+
+*/

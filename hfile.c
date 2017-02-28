@@ -22,7 +22,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.  */
 
+#ifndef _WIN32
 #include <config.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +32,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <errno.h>
 #include <limits.h>
 
-#include <pthread.h>
+//#include <pthread.h>
 
 #include "htslib/hfile.h"
 #include "hfile_internal.h"
@@ -710,11 +712,11 @@ struct hFILE_plugin_list {
 };
 
 static struct hFILE_plugin_list *plugins = NULL;
-static pthread_mutex_t plugins_lock = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t plugins_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void hfile_exit()
 {
-    pthread_mutex_lock(&plugins_lock);
+//    pthread_mutex_lock(&plugins_lock);
 
     kh_destroy(scheme_string, schemes);
 
@@ -728,8 +730,8 @@ static void hfile_exit()
         free(p);
     }
 
-    pthread_mutex_unlock(&plugins_lock);
-    pthread_mutex_destroy(&plugins_lock);
+//    pthread_mutex_unlock(&plugins_lock);
+//    pthread_mutex_destroy(&plugins_lock);
 }
 
 static inline int priority(const struct hFILE_scheme_handler *handler)
@@ -852,9 +854,9 @@ static const struct hFILE_scheme_handler *find_scheme_handler(const char *s)
     if (i == 0 || i >= sizeof scheme) return NULL;
     scheme[i] = '\0';
 
-    pthread_mutex_lock(&plugins_lock);
+//    pthread_mutex_lock(&plugins_lock);
     if (! schemes) load_hfile_plugins();
-    pthread_mutex_unlock(&plugins_lock);
+//    pthread_mutex_unlock(&plugins_lock);
 
     khint_t k = kh_get(scheme_string, schemes, scheme);
     return (k != kh_end(schemes))? kh_value(schemes, k) : &unknown_scheme;

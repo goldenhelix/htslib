@@ -2297,16 +2297,20 @@ int cram_decode_slice(cram_fd *fd, cram_container *c, cram_slice *s,
 		fprintf(stderr, "Slice starts before base 1.\n");
 		s->ref_start = 0;
 	    }
-	    pthread_mutex_lock(&fd->ref_lock);
+#ifdef CRAM_MT
+      pthread_mutex_lock(&fd->ref_lock);
 	    pthread_mutex_lock(&fd->refs->lock);
-	    if ((fd->required_fields & SAM_SEQ) &&
+#endif
+      if ((fd->required_fields & SAM_SEQ) &&
                 ref_id < fd->refs->nref &&
 		s->ref_end > fd->refs->ref_id[ref_id]->length) {
 		s->ref_end = fd->refs->ref_id[ref_id]->length;
 	    }
-	    pthread_mutex_unlock(&fd->refs->lock);
+#ifdef CRAM_MT
+      pthread_mutex_unlock(&fd->refs->lock);
 	    pthread_mutex_unlock(&fd->ref_lock);
-	}
+#endif
+  }
     }
 
     if ((fd->required_fields & SAM_SEQ) &&
@@ -2373,12 +2377,16 @@ int cram_decode_slice(cram_fd *fd, cram_container *c, cram_slice *s,
     }
 
     if (ref_id == -2) {
+#ifdef CRAM_MT
 	pthread_mutex_lock(&fd->ref_lock);
 	pthread_mutex_lock(&fd->refs->lock);
-	refs = calloc(fd->refs->nref, sizeof(char *));
-	pthread_mutex_unlock(&fd->refs->lock);
+#endif
+  refs = calloc(fd->refs->nref, sizeof(char *));
+#ifdef CRAM_MT
+  pthread_mutex_unlock(&fd->refs->lock);
 	pthread_mutex_unlock(&fd->ref_lock);
-	if (!refs)
+#endif
+  if (!refs)
 	    return -1;
     }
 
@@ -2449,12 +2457,15 @@ int cram_decode_slice(cram_fd *fd, cram_container *c, cram_slice *s,
 			}
 		    }
 		    s->ref_start = 1;
+#ifdef CRAM_MT
 		    pthread_mutex_lock(&fd->ref_lock);
 		    pthread_mutex_lock(&fd->refs->lock);
-		    s->ref_end = fd->refs->ref_id[cr->ref_id]->length;
-		    pthread_mutex_unlock(&fd->refs->lock);
+#endif
+        s->ref_end = fd->refs->ref_id[cr->ref_id]->length;
+#ifdef CRAM_MT		  
+        pthread_mutex_unlock(&fd->refs->lock);
 		    pthread_mutex_unlock(&fd->ref_lock);
-
+#endif 
 		    last_ref_id = cr->ref_id;
 		}
 	    } else {
@@ -2711,7 +2722,10 @@ int cram_decode_slice(cram_fd *fd, cram_container *c, cram_slice *s,
 	}
     }
 
+#ifdef CRAM_MT
     pthread_mutex_lock(&fd->ref_lock);
+#endif
+
     if (refs) {
 	int i;
 	for (i = 0; i < fd->refs->nref; i++) {
@@ -2722,7 +2736,10 @@ int cram_decode_slice(cram_fd *fd, cram_container *c, cram_slice *s,
     } else if (ref_id >= 0 && s->ref != fd->ref_free && !embed_ref) {
 	cram_ref_decr(fd->refs, ref_id);
     }
+    
+#ifdef CRAM_MT
     pthread_mutex_unlock(&fd->ref_lock);
+#endif
 
     /* Resolve mate pair cross-references between recs within this slice */
     r |= cram_decode_slice_xref(s, fd->required_fields);
@@ -2962,10 +2979,14 @@ static cram_slice *cram_next_slice(cram_fd *fd, cram_container **cp) {
 	    return NULL;
 	if (!c->comp_hdr->AP_delta &&
 	    sam_hdr_sort_order(fd->header) != ORDER_COORD) {
+#ifdef CRAM_MT
 	    pthread_mutex_lock(&fd->ref_lock);
-	    fd->unsorted = 1;
-	    pthread_mutex_unlock(&fd->ref_lock);
-	}
+#endif CRAM_MT
+      fd->unsorted = 1;
+#ifdef CRAM_MT
+      pthread_mutex_unlock(&fd->ref_lock);
+#endif
+  }
     }
 
     if ((s = c->slice)) {
@@ -3049,10 +3070,14 @@ static cram_slice *cram_next_slice(cram_fd *fd, cram_container **cp) {
 
 		if (!c->comp_hdr->AP_delta &&
 		    sam_hdr_sort_order(fd->header) != ORDER_COORD) {
+#ifdef CRAM_MT
 		    pthread_mutex_lock(&fd->ref_lock);
+#endif
 		    fd->unsorted = 1;
-		    pthread_mutex_unlock(&fd->ref_lock);
-		}
+#ifdef CRAM_MT
+        pthread_mutex_unlock(&fd->ref_lock);
+#endif
+    }
 	    }
 
 	    if (c->num_records == 0) {

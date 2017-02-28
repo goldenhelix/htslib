@@ -43,7 +43,10 @@
 #include <unistd.h>
 #include <assert.h>
 #include <string.h>
+
+#ifndef  _MSC_VER
 #include <sys/time.h>
+#endif
 
 #include "cram/rANS_static.h"
 #include "cram/rANS_byte.h"

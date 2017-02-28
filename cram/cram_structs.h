@@ -45,12 +45,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * also sometimes referred to as landmarks in the spec.
  */
 
-
+#ifdef CRAM_MT
 #include <pthread.h>
+#endif
+
+#ifdef _WIN32
+#undef ERROR
+#include <sys/types.h>
+#endif
+
 #include <stdint.h>
 
 #include "htslib/thread_pool.h"
 #include "cram/string_alloc.h"
+#include "cram/cram_samtools.h"
 #include "cram/mFILE.h"
 #include "htslib/khash.h"
 
@@ -622,7 +630,10 @@ typedef struct {
 
     int count;             // how many cram_fd sharing this refs struct
 
+#ifdef CRAM_MT
     pthread_mutex_t lock;  // Mutex for multi-threaded updating
+#endif
+
     ref_entry *last;       // Last queried sequence
     int last_id;           // Used in cram_ref_decr_locked to delay free
 } refs_t;
@@ -739,10 +750,14 @@ typedef struct cram_fd {
     int own_pool;
     hts_tpool *pool;
     hts_tpool_process *rqueue;
+#ifdef CRAM_MT
     pthread_mutex_t metrics_lock;
     pthread_mutex_t ref_lock;
+#endif
     spare_bams *bl;
+#ifdef CRAM_MT
     pthread_mutex_t bam_list_lock;
+#endif
     void *job_pending;
     int ooc;                            // out of containers.
 

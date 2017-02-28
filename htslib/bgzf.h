@@ -30,6 +30,11 @@
 #ifndef HTSLIB_BGZF_H
 #define HTSLIB_BGZF_H
 
+#ifdef _WIN32
+#include <vcruntime.h>
+#include <unistd.h>
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 #include <zlib.h>

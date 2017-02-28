@@ -41,6 +41,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef _CRAM_READ_H_
 #define _CRAM_READ_H_
 
+#include "cram/cram_structs.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

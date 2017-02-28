@@ -24,13 +24,14 @@ DEALINGS IN THE SOFTWARE.  */
 
 #include <config.h>
 
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <getopt.h>
+//#include <getopt.h>
 #include <unistd.h>
 
 #include "htslib/hfile.h"
@@ -170,6 +171,7 @@ static void view_raw(hFILE *fp, const char *filename)
     }
 }
 
+/*
 static void usage(FILE *fp, int status)
 {
     fprintf(fp,
@@ -269,3 +271,4 @@ int main(int argc, char **argv)
 
     return status;
 }
+*/

@@ -65,6 +65,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <time.h>
 #include <stdint.h>
 
+#ifdef _WIN32
+# define F_OK   0
+# define X_OK   1
+# define W_OK   2
+# define R_OK   4
+#endif
+
 #include "cram/cram.h"
 #include "cram/os.h"
 #include "htslib/hts.h"
@@ -1319,8 +1326,10 @@ int cram_compress_block(cram_fd *fd, cram_block *b, cram_metrics *metrics,
     }
 
     if (metrics) {
+#ifdef CRAM_MT
 	pthread_mutex_lock(&fd->metrics_lock);
-	if (metrics->trial > 0 || --metrics->next_trial <= 0) {
+#endif
+  if (metrics->trial > 0 || --metrics->next_trial <= 0) {
 	    size_t sz_best = INT_MAX;
 	    size_t sz_gz_rle = 0;
 	    size_t sz_gz_def = 0;
@@ -1346,9 +1355,9 @@ int cram_compress_block(cram_fd *fd, cram_block *b, cram_metrics *metrics,
 		metrics->sz_bzip2  /= 2;
 		metrics->sz_lzma   /= 2;
 	    }
-
+#ifdef CRAM_MT
 	    pthread_mutex_unlock(&fd->metrics_lock);
-	    
+#endif
 	    if (method & (1<<GZIP_RLE)) {
 		c = cram_compress_by_method((char *)b->data, b->uncomp_size,
 					    &sz_gz_rle, GZIP, 1, Z_RLE);
@@ -1458,8 +1467,11 @@ int cram_compress_block(cram_fd *fd, cram_block *b, cram_metrics *metrics,
 	    b->method = method_best == GZIP_RLE ? GZIP : method_best;
 	    b->comp_size = sz_best;
 
+#ifdef CRAM_MT
 	    pthread_mutex_lock(&fd->metrics_lock);
-	    metrics->sz_gz_rle += sz_gz_rle;
+#endif
+
+      metrics->sz_gz_rle += sz_gz_rle;
 	    metrics->sz_gz_def += sz_gz_def;
 	    metrics->sz_rans0  += sz_rans0;
 	    metrics->sz_rans1  += sz_rans1;
@@ -1579,13 +1591,17 @@ int cram_compress_block(cram_fd *fd, cram_block *b, cram_metrics *metrics,
 		//	    b->content_id, metrics->revised_method, method);
 		metrics->revised_method = method;
 	    }
+#ifdef CRAM_MT
 	    pthread_mutex_unlock(&fd->metrics_lock);
-	} else {
+#endif
+  } else {
 	    strat = metrics->strat;
 	    method = metrics->method;
 
+#ifdef CRAM_MT
 	    pthread_mutex_unlock(&fd->metrics_lock);
-	    comp = cram_compress_by_method((char *)b->data, b->uncomp_size,
+#endif
+      comp = cram_compress_by_method((char *)b->data, b->uncomp_size,
 					   &comp_size, method,
 					   level, strat);
 	    if (!comp)
@@ -1732,8 +1748,9 @@ void refs_free(refs_t *r) {
     if (r->fp)
 	bgzf_close(r->fp);
 
+#ifdef CRAM_MT
     pthread_mutex_destroy(&r->lock);
-
+#endif
     free(r);
 }
 
@@ -1756,7 +1773,9 @@ static refs_t *refs_create(void) {
     if (!(r->h_meta = kh_init(refs)))
 	goto err;
 
+#ifdef CRAM_MT
     pthread_mutex_init(&r->lock, NULL);
+#endif
 
     return r;
 
@@ -2195,6 +2214,7 @@ static const char *get_cache_basedir(const char **extra) {
 /*
  * Return an integer representation of pthread_self().
  */
+#ifdef CRAM_MT
 static unsigned get_int_threadid() {
     pthread_t pt = pthread_self();
     unsigned char *s = (unsigned char *) &pt;
@@ -2204,6 +2224,7 @@ static unsigned get_int_threadid() {
 	h = (h << 5) - h + s[i];
     return h;
 }
+#endif
 
 /*
  * Queries the M5 string from the header and attempts to populate the
@@ -2435,9 +2456,13 @@ static void cram_ref_incr_locked(refs_t *r, int id) {
 }
 
 void cram_ref_incr(refs_t *r, int id) {
+#ifdef CRAM_MT
     pthread_mutex_lock(&r->lock);
+#endif
     cram_ref_incr_locked(r, id);
+#ifdef CRAM_MT
     pthread_mutex_unlock(&r->lock);
+#endif
 }
 
 static void cram_ref_decr_locked(refs_t *r, int id) {
@@ -2464,9 +2489,13 @@ static void cram_ref_decr_locked(refs_t *r, int id) {
 }
 
 void cram_ref_decr(refs_t *r, int id) {
+#ifdef CRAM_MT
     pthread_mutex_lock(&r->lock);
+#endif
     cram_ref_decr_locked(r, id);
+#ifdef CRAM_MT
     pthread_mutex_unlock(&r->lock);
+#endif
 }
 
 /*
@@ -2644,9 +2673,9 @@ char *cram_get_ref(cram_fd *fd, int id, int start, int end) {
      */
 
     //fd->shared_ref = 1; // hard code for now to simplify things
-
+#ifdef CRAM_MT
     pthread_mutex_lock(&fd->ref_lock);
-
+#endif
     RP("%d cram_get_ref on fd %p, id %d, range %d..%d\n", gettid(), fd, id, start, end);
 
     /*
@@ -2661,20 +2690,26 @@ char *cram_get_ref(cram_fd *fd, int id, int start, int end) {
     /* Sanity checking: does this ID exist? */
     if (id >= fd->refs->nref) {
 	fprintf(stderr, "No reference found for id %d\n", id);
+#ifdef CRAM_MT
 	pthread_mutex_unlock(&fd->ref_lock);
-	return NULL;
+#endif
+  return NULL;
     }
 
     if (!fd->refs || !fd->refs->ref_id[id]) {
 	fprintf(stderr, "No reference found for id %d\n", id);
-	pthread_mutex_unlock(&fd->ref_lock);
-	return NULL;
+#ifdef CRAM_MT
+  pthread_mutex_unlock(&fd->ref_lock);
+#endif
+  return NULL;
     }
 
     if (!(r = fd->refs->ref_id[id])) {
 	fprintf(stderr, "No reference found for id %d\n", id);
-	pthread_mutex_unlock(&fd->ref_lock);
-	return NULL;
+#ifdef CRAM_MT
+  pthread_mutex_unlock(&fd->ref_lock);
+#endif
+  return NULL;
     }
 
 
@@ -2689,14 +2724,18 @@ char *cram_get_ref(cram_fd *fd, int id, int start, int end) {
      * open_path_mfile and libcurl, which isn't multi-thread safe unless I
      * rewrite my code to have one curl handle per thread.
      */
+#ifdef CRAM_MT
     pthread_mutex_lock(&fd->refs->lock);
+#endif
     if (r->length == 0) {
 	if (cram_populate_ref(fd, id, r) == -1) {
 	    fprintf(stderr, "Failed to populate reference for id %d\n", id);
-	    pthread_mutex_unlock(&fd->refs->lock);
+#ifdef CRAM_MT
+      pthread_mutex_unlock(&fd->refs->lock);
 	    pthread_mutex_unlock(&fd->ref_lock);
-	    return NULL;
-	}
+#endif
+      return NULL;
+  }
 	r = fd->refs->ref_id[id];
 	if (fd->unsorted)
 	    cram_ref_incr_locked(fd->refs, id);
@@ -2737,9 +2776,11 @@ char *cram_get_ref(cram_fd *fd, int id, int start, int end) {
 	    } else {
 		ref_entry *e;
 		if (!(e = cram_ref_load(fd->refs, id, r->is_md5))) {
+#ifdef CRAM_MT
 		    pthread_mutex_unlock(&fd->refs->lock);
 		    pthread_mutex_unlock(&fd->ref_lock);
-		    return NULL;
+#endif
+        return NULL;
 		}
 
 		/* unsorted data implies cache ref indefinitely, to avoid
@@ -2762,9 +2803,12 @@ char *cram_get_ref(cram_fd *fd, int id, int start, int end) {
 
 	RP("%d cram_get_ref returning for id %d, count %d\n", gettid(), id, (int)r->count);
 
+#ifdef CRAM_MT
 	pthread_mutex_unlock(&fd->refs->lock);
 	pthread_mutex_unlock(&fd->ref_lock);
-	return cp;
+#endif
+
+  return cp;
     }
 
     /*
@@ -2783,9 +2827,11 @@ char *cram_get_ref(cram_fd *fd, int id, int start, int end) {
 	}
 	fd->ref = NULL;
 	fd->ref_id = id;
+#ifdef CRAM_MT
 	pthread_mutex_unlock(&fd->refs->lock);
 	pthread_mutex_unlock(&fd->ref_lock);
-	return NULL;
+#endif CRAM_MT
+  return NULL;
     }
 
     /* Open file if it's not already the current open reference */
@@ -2795,16 +2841,20 @@ char *cram_get_ref(cram_fd *fd, int id, int start, int end) {
 		return NULL;
 	fd->refs->fn = r->fn;
 	if (!(fd->refs->fp = bgzf_open_ref(fd->refs->fn, "r", r->is_md5))) {
+#ifdef CRAM_MT
 	    pthread_mutex_unlock(&fd->refs->lock);
 	    pthread_mutex_unlock(&fd->ref_lock);
-	    return NULL;
+#endif
+      return NULL;
 	}
     }
 
     if (!(fd->ref = load_ref_portion(fd->refs->fp, r, start, end))) {
-	pthread_mutex_unlock(&fd->refs->lock);
+#ifdef CRAM_MT
+  pthread_mutex_unlock(&fd->refs->lock);
 	pthread_mutex_unlock(&fd->ref_lock);
-	return NULL;
+#endif
+  return NULL;
     }
 
     if (fd->ref_free)
@@ -2816,8 +2866,10 @@ char *cram_get_ref(cram_fd *fd, int id, int start, int end) {
     fd->ref_free = fd->ref;
     seq = fd->ref;
 
+#ifdef CRAM_MT
     pthread_mutex_unlock(&fd->refs->lock);
     pthread_mutex_unlock(&fd->ref_lock);
+#endif
 
     return seq + ostart - start;
 }
@@ -4390,9 +4442,11 @@ int cram_close(cram_fd *fd) {
 	if (0 != cram_flush_result(fd))
 	    return -1;
 
+#ifdef CRAM_MT
 	pthread_mutex_destroy(&fd->metrics_lock);
 	pthread_mutex_destroy(&fd->ref_lock);
 	pthread_mutex_destroy(&fd->bam_list_lock);
+#endif
 
 	fd->ctr = NULL; // prevent double freeing
 
@@ -4628,6 +4682,7 @@ int cram_set_voption(cram_fd *fd, enum hts_fmt_option opt, va_list args) {
 	break;
 
     case CRAM_OPT_NTHREADS: {
+#ifdef CRAM_MT
 	int nthreads =  va_arg(args, int);
         if (nthreads > 1) {
             if (!(fd->pool = hts_tpool_init(nthreads)))
@@ -4640,26 +4695,30 @@ int cram_set_voption(cram_fd *fd, enum hts_fmt_option opt, va_list args) {
 	    fd->shared_ref = 1;
 	    fd->own_pool = 1;
         }
+#endif
 	break;
     }
 
     case CRAM_OPT_THREAD_POOL: {
+#ifdef CRAM_MT
 	htsThreadPool *p = va_arg(args, htsThreadPool *);
 	fd->pool = p ? p->pool : NULL;
 	if (fd->pool) {
 	    fd->rqueue = hts_tpool_process_init(fd->pool,
 						p->qsize ? p->qsize : hts_tpool_size(fd->pool)*2,
 						0);
-	    pthread_mutex_init(&fd->metrics_lock, NULL);
+
+      pthread_mutex_init(&fd->metrics_lock, NULL);
 	    pthread_mutex_init(&fd->ref_lock, NULL);
 	    pthread_mutex_init(&fd->bam_list_lock, NULL);
-	}
+  }
 	fd->shared_ref = 1; // Needed to avoid clobbering ref between threads
 	fd->own_pool = 0;
 
 	//fd->qsize = 1;
 	//fd->decoded = calloc(fd->qsize, sizeof(cram_container *));
 	//hts_tpool_dispatch(fd->pool, cram_decoder_thread, fd);
+#endif
 	break;
     }
 

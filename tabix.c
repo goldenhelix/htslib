@@ -29,7 +29,7 @@ DEALINGS IN THE SOFTWARE.  */
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <getopt.h>
+//#include <getopt.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -334,7 +334,7 @@ int reheader_file(const char *fname, const char *header, int ftype, tbx_conf_t *
         error("todo: reheader BCF, BAM\n");  // BCF is difficult, records contain pointers to the header.
     return 0;
 }
-
+/*
 static int usage(void)
 {
     fprintf(stderr, "\n");
@@ -544,3 +544,4 @@ int main(int argc, char *argv[])
     }
     return 0;
 }
+*/

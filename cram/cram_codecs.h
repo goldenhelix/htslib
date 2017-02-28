@@ -33,6 +33,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <inttypes.h>
 
+#include "cram/cram_structs.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

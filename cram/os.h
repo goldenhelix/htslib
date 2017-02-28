@@ -215,14 +215,14 @@ static inline uint16_t le_int2(uint16_t x) {
 #  ifndef HAVE_FSEEKO
 #    if __MSVCRT_VERSION__ >= 0x800
        /* if you have MSVCR80 installed then you can use these definitions: */
-#      define off_t __int64
-#      define fseeko _fseeki64
-#      define ftello _ftelli64
+#      define off_t __int64;
+#      define fseeko _fseeki64;
+#      define ftello _ftelli64;
 #    else
        /* otherwise we're stuck with 32-bit file support */
-#      define off_t long
-#      define fseeko fseek
-#      define ftello ftell
+//#      define off_t long
+//#      define fseeko fseek
+//#      define ftello ftell
 #    endif
 #  endif /* !HAVE_FSEEKO */
 #endif /* _WIN32 */

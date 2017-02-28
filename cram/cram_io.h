@@ -42,10 +42,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef _CRAM_IO_H_
 #define _CRAM_IO_H_
 
+#ifdef _WIN32
+#include <stdint.h>
+#endif
+
+
 #define ITF8_MACROS
 
 #include <stdint.h>
 #include <cram/misc.h>
+#include <cram/cram_structs.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {

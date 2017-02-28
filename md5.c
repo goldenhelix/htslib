@@ -45,7 +45,6 @@
  * optimizations are not included to reduce source code size and avoid
  * compile-time configuration.
  */
-
 #include <config.h>
 
 #include <stdlib.h>

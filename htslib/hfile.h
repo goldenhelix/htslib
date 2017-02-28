@@ -26,6 +26,12 @@ DEALINGS IN THE SOFTWARE.  */
 #ifndef HTSLIB_HFILE_H
 #define HTSLIB_HFILE_H
 
+#ifdef _WIN32
+#include <stdint.h>
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#endif
+
 #include <string.h>
 
 #include <sys/types.h>

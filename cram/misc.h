@@ -67,7 +67,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdio.h>
 #include <stdarg.h>  /* varargs needed for v*printf() prototypes */
+
+#ifndef _WIN32
 #include <sys/types.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {

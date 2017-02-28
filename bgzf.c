@@ -25,13 +25,21 @@
 
 #include <config.h>
 
+#ifdef _MSC_VER
+#include <stdint.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
 #include <assert.h>
+
+#ifdef BGZF_MT
 #include <pthread.h>
+#endif //BGZF_MT
+
 #include <sys/types.h>
 #include <inttypes.h>
 
@@ -40,9 +48,6 @@
 #include "htslib/hfile.h"
 #include "htslib/thread_pool.h"
 #include "cram/pooled_alloc.h"
-
-#define BGZF_CACHE
-#define BGZF_MT
 
 #define BLOCK_HEADER_LENGTH 18
 #define BLOCK_FOOTER_LENGTH 8
@@ -86,6 +91,7 @@ typedef struct bgzf_job {
     int64_t block_address;
     int hit_eof;
 } bgzf_job;
+
 
 enum mtaux_cmd {
     NONE = 0,
@@ -141,7 +147,10 @@ struct __bgzidx_t
 
 void bgzf_index_destroy(BGZF *fp);
 int bgzf_index_add_block(BGZF *fp);
+
+#ifdef BZGF_MT
 static void mt_destroy(mtaux_t *mt);
+#endif
 
 static inline void packInt16(uint8_t *buffer, uint16_t value)
 {
@@ -621,10 +630,12 @@ static void cache_block(BGZF *fp, int size) {}
  */
 static off_t bgzf_htell(BGZF *fp) {
     if (fp->mt) {
+#ifdef BGZF_MT
         pthread_mutex_lock(&fp->mt->job_pool_m);
         off_t pos = fp->block_address + fp->block_clength;
         pthread_mutex_unlock(&fp->mt->job_pool_m);
         return pos;
+#endif
     } else {
         return htell(fp->fp);
     }
@@ -632,8 +643,9 @@ static off_t bgzf_htell(BGZF *fp) {
 
 int bgzf_read_block(BGZF *fp)
 {
+#ifdef BGZF_MT
     hts_tpool_result *r;
-
+  
     if (fp->mt) {
     again:
         if (fp->mt->hit_eof) {
@@ -711,6 +723,8 @@ int bgzf_read_block(BGZF *fp)
         hts_tpool_delete_result(r, 0);
         return 0;
     }
+
+#endif
 
     uint8_t header[BLOCK_HEADER_LENGTH], *compressed_block;
     int count, size, block_length, remaining;
@@ -1515,6 +1529,7 @@ int bgzf_check_EOF(BGZF *fp) {
     int has_eof;
 
     if (fp->mt) {
+#ifdef BGZF_MT
         pthread_mutex_lock(&fp->mt->command_m);
         fp->mt->command = HAS_EOF;
         pthread_cond_signal(&fp->mt->command_c);
@@ -1522,6 +1537,7 @@ int bgzf_check_EOF(BGZF *fp) {
         pthread_cond_wait(&fp->mt->command_c, &fp->mt->command_m);
         has_eof = fp->mt->eof;
         pthread_mutex_unlock(&fp->mt->command_m);
+#endif
     } else {
         has_eof = bgzf_check_EOF_common(fp);
     }
@@ -1543,6 +1559,7 @@ int64_t bgzf_seek(BGZF* fp, int64_t pos, int where)
     block_offset = pos & 0xFFFF;
     block_address = pos >> 16;
 
+#ifdef BGZF_MT
     if (fp->mt) {
         // The reader runs asynchronous and does loops of:
         //    Read block
@@ -1571,15 +1588,20 @@ int64_t bgzf_seek(BGZF* fp, int64_t pos, int where)
 
         pthread_mutex_unlock(&fp->mt->command_m);
     } else {
-        if (hseek(fp->fp, block_address, SEEK_SET) < 0) {
+#endif
+
+      if (hseek(fp->fp, block_address, SEEK_SET) < 0) {
             fp->errcode |= BGZF_ERR_IO;
             return -1;
         }
         fp->block_length = 0;  // indicates current block has not been loaded
         fp->block_address = block_address;
         fp->block_offset = block_offset;
-    }
 
+#ifdef BGZF_MT
+    }
+#endif
+    
     return 0;
 }
 

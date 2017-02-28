@@ -39,7 +39,7 @@ typedef struct
     int *idx, nidx;
     int nregs, mregs;   // n:used, m:alloced
     reg_t *regs;
-    void *payload;
+    char *payload;
 }
 reglist_t;
 
@@ -58,7 +58,7 @@ struct _regidx_t
     kstring_t str;
     int rid_prev, start_prev, end_prev;
     int payload_size;
-    void *payload;
+    char *payload;
 };
 
 int regidx_seq_nregs(regidx_t *idx, const char *seq)
